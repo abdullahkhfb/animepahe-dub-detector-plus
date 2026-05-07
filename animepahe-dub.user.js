@@ -1,9 +1,8 @@
 // ==UserScript==
-// @name         AnimePahe DUB Detector (Optimized)
+// @name         AnimePahe-DUB-Detector
 // @namespace    https://github.com/abdullahkhfb/animepahe-dub-detector
-// @version      2.0.1
-// @description  Tags dubbed episodes with DUB badges on AnimePahe.
-// @author       abdullahkhfb
+// @version      2.0.2
+// @description  Tags dubbed episodes with DUB badges on AnimePahe,
 // @license      GPLv3
 // @match        *://animepahe.pw/*
 // @match        *://animepahe.com/*
@@ -13,13 +12,15 @@
 // @downloadURL  https://raw.githubusercontent.com/abdullahkhfb/animepahe-dub-detector/main/animepahe-dub.user.js
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_deleteValue
+// @grant        GM_listValues
 // @run-at       document-idle
 // ==/UserScript==
 
 (async function () {
   "use strict";
 
-  const CACHE_TTL = 12 * 60 * 60 * 1000;
+  const CACHE_TTL = 12 * 60 * 60 * 1000; // 12 hours
   const BATCH_SIZE = 3;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const LOG = (...a) => console.log("[DUB]", ...a);
@@ -45,28 +46,81 @@
     };
   })();
 
-  // ── Cache ──────────────────────────────────────────────────────────────────
+  // ── Cache Management & Garbage Collection ──────────────────────────────────
+  function cleanExpiredCache() {
+    const keys = GM_listValues();
+    const now = Date.now();
+    let deletedCount = 0;
+
+    for (const key of keys) {
+      // Instantly wipe all old/broken cache keys from versions < 2.4
+      if (
+        key.startsWith("d_") ||
+        key.startsWith("h_") ||
+        key.startsWith("dub") ||
+        key.startsWith("home")
+      ) {
+        GM_deleteValue(key);
+        deletedCount++;
+        continue;
+      }
+
+      // Process current V2.4 keys
+      if (!key.startsWith("d2_") && !key.startsWith("h2_")) continue;
+
+      try {
+        const raw = GM_getValue(key, "");
+        let ts = 0;
+
+        if (typeof raw === "string" && raw.includes("|")) {
+          ts = parseInt(raw.split("|")[0], 10);
+        } else if (typeof raw === "string" && raw.startsWith("{")) {
+          ts = JSON.parse(raw).ts;
+        }
+
+        if (!ts || now - ts > CACHE_TTL) {
+          GM_deleteValue(key);
+          deletedCount++;
+        }
+      } catch (e) {
+        GM_deleteValue(key);
+        deletedCount++;
+      }
+    }
+    if (deletedCount > 0)
+      LOG(`Garbage collector removed ${deletedCount} old/expired items.`);
+  }
+
+  setTimeout(cleanExpiredCache, 2000);
+
   function cacheGet(key) {
     try {
       const raw = GM_getValue(key, null);
       if (!raw) return undefined;
-      const { ts, val } = JSON.parse(raw);
-      if (Date.now() - ts > CACHE_TTL) {
-        GM_setValue(key, "");
-        return undefined;
+
+      if (typeof raw === "string" && raw.includes("|")) {
+        const parts = raw.split("|");
+        const ts = parseInt(parts[0], 10);
+
+        if (Date.now() - ts > CACHE_TTL) {
+          GM_deleteValue(key);
+          return undefined;
+        }
+        return JSON.parse(parts.slice(1).join("|"));
       }
-      return val;
+      return undefined;
     } catch {
       return undefined;
     }
   }
+
   function cacheSet(key, val) {
-    GM_setValue(key, JSON.stringify({ ts: Date.now(), val }));
+    GM_setValue(key, `${Date.now()}|${JSON.stringify(val)}`);
   }
 
   // ── Throttled Native Fetch ──────────────────────────────────────────────────
   async function apiFetch(url, expectJson = true) {
-    await sleep(150); // Optimization: Prevent rapid-fire 429 Too Many Requests
+    await sleep(150);
     const resp = await fetch(url, {
       credentials: "include",
       headers: {
@@ -88,7 +142,7 @@
     );
   }
 
-  // ── Dub detection – method B: parse play page HTML ────────────────
+  // ── Dub detection – method B: parse play page HTML ────────────────────────
   async function checkViaPlayPage(animeSession, epSession) {
     const url = `/play/${animeSession}/${epSession}`;
     const html = await apiFetch(url, false);
@@ -113,30 +167,31 @@
     return false;
   }
 
-  // ── Orchestrator with Fast Mode ───────────────────────────────────────────
-  async function isEpisodeDubbed(animeSession, epSession, fastMode = false) {
-    const cKey = `dub4_${epSession}`;
+  // ── Orchestrator (100% Accurate) ──────────────────────────────────────────
+  async function isEpisodeDubbed(animeSession, epSession) {
+    const cKey = `d2_${epSession}`;
     const hit = cacheGet(cKey);
     if (hit !== undefined) return hit;
 
+    let r = false;
+
     try {
-      const r = await checkViaLinksAPI(animeSession, epSession);
-      cacheSet(cKey, r);
-      if (r || fastMode) return r;
+      r = await checkViaLinksAPI(animeSession, epSession);
     } catch (e) {
       WARN("A failed:", e.message);
     }
 
-    if (!fastMode) {
+    // If API check fails, ALWAYS fallback to the heavy HTML check. Binary Search makes this fast enough.
+    if (!r) {
       try {
-        const r = await checkViaPlayPage(animeSession, epSession);
-        cacheSet(cKey, r);
-        return r;
+        r = await checkViaPlayPage(animeSession, epSession);
       } catch (e) {
         WARN("B failed:", e.message);
       }
     }
-    return false;
+
+    cacheSet(cKey, r);
+    return r;
   }
 
   async function findDubCountBinary(animeSession, eps) {
@@ -145,14 +200,12 @@
     const firstDub = await isEpisodeDubbed(
       animeSession,
       eps[0].session || eps[0].anime_session,
-      true,
     );
     if (!firstDub) return 0;
 
     const lastDub = await isEpisodeDubbed(
       animeSession,
       eps[eps.length - 1].session || eps[eps.length - 1].anime_session,
-      true,
     );
     if (lastDub) return eps.length;
 
@@ -165,11 +218,11 @@
       const isDub = await isEpisodeDubbed(
         animeSession,
         eps[mid].session || eps[mid].anime_session,
-        true,
       );
       if (isDub) {
         highestDubIndex = mid;
         low = mid + 1;
+      } else {
         high = mid - 1;
       }
     }
@@ -233,7 +286,7 @@
   // ════════════════════════════════════════════════════════════════════════════
   const path = location.pathname;
 
-  // ── /anime/{session} ──────────────────────────────────────────────────────
+  // ── /anime/{session} (OPTIMIZED DOM BINARY SEARCH) ────────────────────────
   const animeM = path.match(/^\/anime\/([^/?#]+)/);
   if (animeM) {
     const animeSession = animeM[1];
@@ -254,6 +307,10 @@
         );
       }
 
+      // CRITICAL FIX: AnimePahe lists episodes Descending (Newest to Oldest).
+      // We must reverse the list so our Binary Search checks Ep 1 first!
+      list.reverse();
+
       const work = [];
       for (const anchor of list) {
         if (anchor.dataset.dubScanned) continue;
@@ -267,44 +324,50 @@
       }
 
       if (work.length > 0) {
-        pill.set("scanning page…");
-        let dubbed = 0;
+        pill.set("fast scanning…");
 
-        for (let i = 0; i < work.length; i += BATCH_SIZE) {
-          const wave = work.slice(i, i + BATCH_SIZE);
-          pill.set(
-            `${i + 1}–${Math.min(i + BATCH_SIZE, work.length)} / ${work.length}`,
+        let highestDubIndex = -1;
+
+        // Binary Search the DOM Elements
+        const firstDub = await isEpisodeDubbed(animeSession, work[0].epSession);
+        if (firstDub) {
+          const lastDub = await isEpisodeDubbed(
+            animeSession,
+            work[work.length - 1].epSession,
           );
-
-          await Promise.all(
-            wave.map(async ({ anchor, epSession }) => {
-              spin(anchor, true, "anime");
-              try {
-                const ok = await isEpisodeDubbed(
-                  animeSession,
-                  epSession,
-                  false,
-                ); // Allow heavy check here
-                spin(anchor, false, "anime");
-                if (ok) {
-                  if (getComputedStyle(anchor).position === "static") {
-                    anchor.style.setProperty(
-                      "position",
-                      "relative",
-                      "important",
-                    );
-                  }
-                  addBadge(anchor);
-                  dubbed++;
-                }
-              } catch (e) {
-                spin(anchor, false, "anime");
-                WARN(epSession, e.message);
+          if (lastDub) {
+            highestDubIndex = work.length - 1; // Entire page is dubbed
+          } else {
+            let low = 0;
+            let high = work.length - 1;
+            while (low <= high) {
+              let mid = Math.floor((low + high) / 2);
+              const isDub = await isEpisodeDubbed(
+                animeSession,
+                work[mid].epSession,
+              );
+              if (isDub) {
+                highestDubIndex = mid;
+                low = mid + 1;
+              } else {
+                high = mid - 1;
               }
-            }),
-          );
+            }
+          }
         }
-        pill.set("done");
+
+        // Apply badges to all episodes up to the chronological boundary
+        let dubbed = 0;
+        for (let i = 0; i <= highestDubIndex; i++) {
+          const item = work[i];
+          if (getComputedStyle(item.anchor).position === "static") {
+            item.anchor.style.setProperty("position", "relative", "important");
+          }
+          addBadge(item.anchor);
+          dubbed++;
+        }
+
+        pill.set(`Page: ${dubbed} DUB ✓`);
         setTimeout(() => pill.hide(), 4000);
       }
       isAnimeScanning = false;
@@ -326,7 +389,7 @@
   if (playM) {
     const [, animeSession, epSession] = playM;
     pill.set("checking…");
-    const ok = await isEpisodeDubbed(animeSession, epSession, false);
+    const ok = await isEpisodeDubbed(animeSession, epSession);
     if (ok) {
       const titleEl = document.querySelector("h1");
       if (titleEl) {
@@ -353,28 +416,38 @@
       isScanning = true;
 
       const work = [];
-      for (const a of document.querySelectorAll('a[href*="/anime/"]')) {
+      for (const a of document.querySelectorAll(
+        'a[href*="/anime/"], a[href*="/play/"]',
+      )) {
         if (a.dataset.dubScanned) continue;
-        const m = (a.getAttribute("href") || "").match(/\/anime\/([^/?#]+)/);
+
+        const href = a.getAttribute("href") || "";
+        const m = href.match(/(?:\/anime\/|\/play\/)([^/?#]+)/);
         if (!m) continue;
+
         a.dataset.dubScanned = "true";
 
+        let img = a.querySelector("img");
         let targetElement = a;
-        let parent = a.parentElement;
-        while (parent && parent !== document.body) {
-          const img = parent.querySelector("img");
-          if (img) {
-            targetElement = img.closest("a") || img.parentElement;
-            targetElement.style.setProperty(
-              "position",
-              "relative",
-              "important",
-            );
-            targetElement.style.setProperty("display", "block", "important");
-            break;
+
+        if (!img) {
+          let parent = a.parentElement;
+          let depth = 0;
+          while (parent && depth < 3) {
+            img = parent.querySelector("img");
+            if (img) break;
+            parent = parent.parentElement;
+            depth++;
           }
-          parent = parent.parentElement;
         }
+
+        if (!img) continue;
+
+        targetElement = img.closest("a") || img.parentElement;
+        if (getComputedStyle(targetElement).position === "static") {
+          targetElement.style.setProperty("position", "relative", "important");
+        }
+
         work.push({ anchor: targetElement, animeSession: m[1] });
       }
 
@@ -386,7 +459,7 @@
               .slice(i, i + BATCH_SIZE)
               .map(async ({ anchor, animeSession }) => {
                 spin(anchor, true, "home");
-                const hk = `home7_${animeSession}`; // Bumped cache key for new version
+                const hk = `h2_${animeSession}`;
                 let stats = cacheGet(hk);
 
                 if (stats === undefined) {
@@ -399,8 +472,6 @@
                       : Object.values(rel.data || {});
 
                     const totalCount = rel.total || eps.length;
-
-                    // USE BINARY SEARCH OPTIMIZATION
                     const dubCount = await findDubCountBinary(
                       animeSession,
                       eps,
