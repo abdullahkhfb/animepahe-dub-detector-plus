@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AnimePahe DUB Detector (Optimized)
 // @namespace    https://github.com/abdullahkhfb/animepahe-dub-detector
-// @version      2.0
+// @version      2.0.1
 // @description  Tags dubbed episodes with DUB badges on AnimePahe.
 // @author       abdullahkhfb
 // @license      GPLv3
