@@ -1,0 +1,40 @@
+# AnimePahe DUB Detector
+
+Tags dubbed episodes with DUB badges on AnimePahe — per episode, automatically.
+
+## Features
+
+- Detects English-dubbed episodes on anime pages, play pages, and the home page.
+- Two-stage validation: queries the episode links API, then falls back to parsing the play page HTML.
+- Results cached for 12 hours (configurable) to avoid repeated requests.
+- Batch processing (3 episodes at a time) to reduce load.
+- Status pill in bottom-right corner shows progress, then disappears.
+
+## Installation
+
+1. Install a userscript manager.  
+   **Recommended: [ScriptCat](https://scriptcat.org/)** (fast, modern, with cloud backup, opensource ). 
+2. Open the [raw script](https://raw.githubusercontent.com/abdullahkhfb/animepahe-dub-detector/main/animepahe-dub.user.js)  your manager will prompt to install.
+3. Click Install.
+
+The script auto-updates from GitHub.
+Visible results:
+- **Anime page**: Orange `DUB` badge on dubbed episode cards (top-right).
+- **Play page**: `DUB` badge next to the episode number.
+- **Home page**: Pink badge like `4/12` on anime covers (top-left), showing dubbed/total episodes.
+
+## Configuration
+
+Edit these variables at the top of the script if needed:
+- `CACHE_TTL` – cache lifetime in milliseconds (default: 12 hours).
+- `BATCH_SIZE` – concurrent checks per batch (default: 3).
+
+Logging prefixed with `[DUB]` appears in the browser console. Comment out the `LOG` function to silence it.
+
+## Known Issues
+
+- Rate limiting (HTTP 429). The script batches requests and caches results; if limited, wait a few minutes.
+- Home page uses a MutationObserver with 500ms debounce for newly loaded content.
+
+## License
+MIT.
