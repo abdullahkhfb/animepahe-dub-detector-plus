@@ -17,7 +17,6 @@ Tags dubbed episodes with DUB badges on AnimePahe — per episode, automatically
 2. Open the [raw script](https://raw.githubusercontent.com/abdullahkhfb/animepahe-dub-detector/main/animepahe-dub.user.js)  your manager will prompt to install.
 3. Click Install.
 
-The script auto-updates from GitHub.
 Visible results:
 - **Anime page**: Orange `DUB` badge on dubbed episode cards (top-right).
 - **Play page**: `DUB` badge next to the episode number.
