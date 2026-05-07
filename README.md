@@ -36,4 +36,4 @@ Logging prefixed with `[DUB]` appears in the browser console. Comment out the `L
 - Home page uses a MutationObserver with 500ms debounce for newly loaded content.
 
 ## License
-MIT.
+[GPLv3](LICENSE)
