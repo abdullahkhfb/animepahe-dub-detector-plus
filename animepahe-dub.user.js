@@ -20,8 +20,8 @@
 
   const CACHE_TTL = 12 * 60 * 60 * 1000;
   const BATCH_SIZE = 3;
-  const LOG = (...a) => console.log("[DUB]", ...a);
-  const WARN = (...a) => console.warn("[DUB]", ...a);
+  // const LOG = (...a) => console.log("[DUB]", ...a);
+  // const WARN = (...a) => console.warn("[DUB]", ...a);
 
   // ── Status pill ────────────────────────────────────────────────────────────
   const pill = (() => {
