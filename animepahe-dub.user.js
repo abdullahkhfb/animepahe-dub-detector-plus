@@ -4,6 +4,7 @@
 // @version      2.0
 // @description  Tags dubbed episodes with DUB badges on AnimePahe.
 // @author       abdullahkhfb
+// @license      GPLv3
 // @match        *://animepahe.pw/*
 // @match        *://animepahe.com/*
 // @match        *://animepahe.org/*
