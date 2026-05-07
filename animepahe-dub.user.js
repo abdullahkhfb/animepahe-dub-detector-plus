@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AnimePahe DUB Detector
 // @namespace    https://github.com/animepahe-dub
-// @version      1.0
+// @version      1.0.1
 // @description  Tags dubbed episodes with DUB badges on AnimePahe — per episode.
 // @author       abdullahkhfb
 // @match        *://animepahe.pw/*
