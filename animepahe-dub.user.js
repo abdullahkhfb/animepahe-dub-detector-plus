@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AnimePahe DUB Detector
 // @namespace    https://github.com/animepahe-dub
-// @version      1.0.1
+// @version      1.0.2
 // @description  Tags dubbed episodes with DUB badges on AnimePahe — per episode.
 // @author       abdullahkhfb
 // @match        *://animepahe.pw/*
@@ -20,8 +20,8 @@
 
   const CACHE_TTL = 12 * 60 * 60 * 1000;
   const BATCH_SIZE = 3;
-  // const LOG = (...a) => console.log("[DUB]", ...a);
-  // const WARN = (...a) => console.warn("[DUB]", ...a);
+  const LOG = (...a) => console.log("[DUB]", ...a);
+  const WARN = (...a) => console.warn("[DUB]", ...a);
 
   // ── Status pill ────────────────────────────────────────────────────────────
   const pill = (() => {
