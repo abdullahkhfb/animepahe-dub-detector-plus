@@ -169,7 +169,7 @@
       left: auto !important;
     }
 
-    /* Home Page Settings - TOP LEFT */
+    /* Home Page Settings - TOP RIGHT*/
     .dub-badge-home {
       background: #d92558 !important;
       right: 5px !important;
