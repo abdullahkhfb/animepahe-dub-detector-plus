@@ -14,7 +14,7 @@ Tags dubbed episodes with DUB badges on AnimePahe — per episode, automatically
 
 1. Install a userscript manager.  
    **Recommended: [ScriptCat](https://scriptcat.org/)** (fast, modern, with cloud backup, open-source ).
-2. Open the [raw script](https://update.greasyfork.org/scripts/577043/AnimePahe%20DUB%20Detector%20%28Optimized%29.user.js) your manager will prompt to install.
+2. Open the [raw script](https://update.greasyfork.org/scripts/577043/AnimePahe-DUB-Detector.user.js) your manager will prompt to install.
 3. Click Install.
 
 Visible results:
