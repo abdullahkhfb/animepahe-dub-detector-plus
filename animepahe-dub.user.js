@@ -172,8 +172,8 @@
     /* Home Page Settings - TOP LEFT */
     .dub-badge-home {
       background: #d92558 !important;
-      left: 5px !important;
-      right: auto !important;
+      right: 5px !important;
+      left: auto !important;
     }
 
     .dub-spin {
