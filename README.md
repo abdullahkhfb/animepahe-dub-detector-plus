@@ -21,7 +21,7 @@ Visible results:
 
 - **Anime page**: Orange `DUB` badge on dubbed episode cards (top-right).
 - **Play page**: `DUB` badge next to the episode number.
-- **Home page**: Pink badge like `4/12` on anime covers (top-left), showing dubbed/total episodes.
+- **Home page**: Pink badge like `4/12` on anime covers (top-right), showing dubbed/total episodes.
 
 ## Configuration
 
