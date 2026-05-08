@@ -1,4 +1,7 @@
-# AnimePahe DUB Detector
+<div align="center">
+  <img src="icon/animepahe-dub-detector.svg" width="128" alt="AnimePahe DUB Detector Icon">
+  <h1>AnimePahe DUB Detector</h1>
+</div>
 
 Tags dubbed episodes with DUB badges on AnimePahe — per episode, automatically.
 

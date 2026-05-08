@@ -1,9 +1,10 @@
 // ==UserScript==
 // @name         AnimePahe-DUB-Detector
 // @namespace    https://github.com/abdullahkhfb/animepahe-dub-detector
-// @version      2.0.2
+// @version      2.0.3
 // @description  Tags dubbed episodes with DUB badges on AnimePahe,
 // @license      GPLv3
+// @icon         https://raw.githubusercontent.com/abdullahkhfb/animepahe-dub-detector/main/icon/animepahe-dub-detector.svg
 // @match        *://animepahe.pw/*
 // @match        *://animepahe.com/*
 // @match        *://animepahe.org/*
