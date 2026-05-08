@@ -2,13 +2,11 @@
 // @name         AnimePahe-DUB-Detector
 // @namespace    https://github.com/abdullahkhfb/animepahe-dub-detector
 // @version      2.0.3
-// @description  Tags dubbed episodes with DUB badges on AnimePahe,
+// @description  Tags dubbed episodes with DUB badges on AnimePahe.
 // @license      GPLv3
 // @icon         https://raw.githubusercontent.com/abdullahkhfb/animepahe-dub-detector/main/icon/animepahe-dub-detector.svg
 // @match        *://animepahe.pw/*
-// @match        *://animepahe.com/*
 // @match        *://animepahe.org/*
-// @match        *://animepahe.ru/*
 // @updateURL    https://raw.githubusercontent.com/abdullahkhfb/animepahe-dub-detector/main/animepahe-dub.user.js
 // @downloadURL  https://raw.githubusercontent.com/abdullahkhfb/animepahe-dub-detector/main/animepahe-dub.user.js
 // @grant        GM_getValue
@@ -21,7 +19,7 @@
 (async function () {
   "use strict";
 
-  const CACHE_TTL = 12 * 60 * 60 * 1000; // 12 hours
+  const CACHE_TTL = 12 * 60 * 60 * 1000;
   const BATCH_SIZE = 3;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const LOG = (...a) => console.log("[DUB]", ...a);
@@ -54,7 +52,6 @@
     let deletedCount = 0;
 
     for (const key of keys) {
-      // Instantly wipe all old/broken cache keys from versions < 2.4
       if (
         key.startsWith("d_") ||
         key.startsWith("h_") ||
@@ -168,7 +165,7 @@
     return false;
   }
 
-  // ── Orchestrator (100% Accurate) ──────────────────────────────────────────
+  // ── Orchestrator ──────────────────────────────────────────
   async function isEpisodeDubbed(animeSession, epSession) {
     const cKey = `d2_${epSession}`;
     const hit = cacheGet(cKey);
@@ -308,8 +305,6 @@
         );
       }
 
-      // CRITICAL FIX: AnimePahe lists episodes Descending (Newest to Oldest).
-      // We must reverse the list so our Binary Search checks Ep 1 first!
       list.reverse();
 
       const work = [];
