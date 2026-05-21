@@ -1,9 +1,9 @@
 <div align="center">
   <img src="icon/animepahe-dub-detector.svg" width="128" alt="AnimePahe DUB Detector Icon">
-  <h1>AnimePahe DUB Detector</h1>
+  <h1>animepahe DUB Detector</h1>
 </div>
 
-Tags dubbed episodes with DUB badges on AnimePahe — per episode, automatically.
+Tags dubbed episodes with DUB badges on animepahe — per episode, automatically.
 
 ## Features
 
@@ -22,7 +22,7 @@ Tags dubbed episodes with DUB badges on AnimePahe — per episode, automatically
 
 Visible results:
 
-- **Anime page**: Orange `DUB` badge on dubbed episode cards (top-right).
+- **Anime page**: Pink `DUB` badge on dubbed episode cards (top-right).
 - **Play page**: `DUB` badge next to the episode number.
 - **Home page**: Pink badge like `4/12` on anime covers (top-right), showing dubbed/total episodes.
 

@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         AnimePahe-DUB-Detector
+// @name         animepahe-DUB-Detector
 // @namespace    https://github.com/abdullahkhfb/animepahe-dub-detector
-// @version      2.0.3
-// @description  Tags dubbed episodes with DUB badges on AnimePahe.
+// @version      2.0.4
+// @description  Tags dubbed episodes with DUB badges on animepahe.
 // @license      GPLv3
 // @icon         https://raw.githubusercontent.com/abdullahkhfb/animepahe-dub-detector/main/icon/animepahe-dub-detector.svg
 // @match        *://animepahe.pw/*
@@ -13,6 +13,7 @@
 // @grant        GM_setValue
 // @grant        GM_deleteValue
 // @grant        GM_listValues
+// @grant        GM_registerMenuCommand
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -25,27 +26,78 @@
   const LOG = (...a) => console.log("[DUB]", ...a);
   const WARN = (...a) => console.warn("[DUB]", ...a);
 
-  // ── Status pill ────────────────────────────────────────────────────────────
   const pill = (() => {
     const el = document.createElement("div");
     el.style.cssText =
       "position:fixed;bottom:12px;right:12px;z-index:99999;" +
-      "background:rgba(0,0,0,.78);color:#fff;font:700 11px/1.5 monospace;" +
+      "background:rgba(0,0,0,.85);color:#fff;font:700 11px/1.5 monospace;" +
       "padding:5px 10px;border-radius:20px;pointer-events:none;" +
-      "transition:opacity .5s;max-width:280px;text-align:right;";
+      "transition:opacity .5s;max-width:340px;text-align:right;" +
+      "display:flex;align-items:center;gap:8px;box-shadow:0 2px 8px rgba(0,0,0,0.3);";
+
+    const textSpan = document.createElement("span");
+    el.appendChild(textSpan);
+
+    const btn = document.createElement("button");
+    btn.textContent = "Clear Cache";
+    btn.style.cssText =
+      "background:#d92558;color:#fff;border:none;padding:2px 8px;border-radius:12px;" +
+      "cursor:pointer;font:700 9px sans-serif;text-transform:uppercase;line-height:1;" +
+      "pointer-events:auto;display:none;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:background 0.2s;";
+
+    btn.onmouseenter = () => (btn.style.background = "#b81d47");
+    btn.onmouseleave = () => (btn.style.background = "#d92558");
+
+    const clearCacheAction = () => {
+      const keys = GM_listValues();
+      let deletedCount = 0;
+      for (const key of keys) {
+        if (
+          key.startsWith("d_") ||
+          key.startsWith("h_") ||
+          key.startsWith("dub") ||
+          key.startsWith("home") ||
+          key.startsWith("d2_") ||
+          key.startsWith("h2_")
+        ) {
+          GM_deleteValue(key);
+          deletedCount++;
+        }
+      }
+      textSpan.textContent = `🎙 DUB: Cleared ${deletedCount} items!`;
+      btn.style.display = "none";
+      LOG(`Manual cache clear executed. Removed ${deletedCount} items.`);
+      setTimeout(() => {
+        location.reload();
+      }, 1000);
+    };
+
+    btn.addEventListener("click", clearCacheAction);
+    el.appendChild(btn);
     document.body.appendChild(el);
+
     return {
       set(t) {
-        el.textContent = "🎙 DUB: " + t;
+        textSpan.textContent = "🎙 DUB: " + t;
         el.style.opacity = "1";
+        el.style.pointerEvents = "auto";
+        btn.style.display = "inline-block";
       },
       hide() {
         el.style.opacity = "0";
+        el.style.pointerEvents = "none";
+        btn.style.display = "none";
       },
+      clearCache: clearCacheAction,
     };
   })();
 
-  // ── Cache Management & Garbage Collection ──────────────────────────────────
+  if (typeof GM_registerMenuCommand !== "undefined") {
+    GM_registerMenuCommand("🗑️ Clear Dub Detector Cache", () => {
+      pill.clearCache();
+    });
+  }
+
   function cleanExpiredCache() {
     const keys = GM_listValues();
     const now = Date.now();
@@ -63,7 +115,6 @@
         continue;
       }
 
-      // Process current V2.4 keys
       if (!key.startsWith("d2_") && !key.startsWith("h2_")) continue;
 
       try {
@@ -116,7 +167,6 @@
     GM_setValue(key, `${Date.now()}|${JSON.stringify(val)}`);
   }
 
-  // ── Throttled Native Fetch ──────────────────────────────────────────────────
   async function apiFetch(url, expectJson = true) {
     await sleep(150);
     const resp = await fetch(url, {
@@ -130,7 +180,6 @@
     return expectJson ? resp.json() : resp.text();
   }
 
-  // ── Dub detection – method A: /api?m=links ────────────────────────────────
   async function checkViaLinksAPI(animeSession, epSession) {
     const url = `/api?m=links&id=${animeSession}&session=${epSession}&p=kwik`;
     const data = await apiFetch(url);
@@ -140,7 +189,6 @@
     );
   }
 
-  // ── Dub detection – method B: parse play page HTML ────────────────────────
   async function checkViaPlayPage(animeSession, epSession) {
     const url = `/play/${animeSession}/${epSession}`;
     const html = await apiFetch(url, false);
@@ -165,7 +213,6 @@
     return false;
   }
 
-  // ── Orchestrator ──────────────────────────────────────────
   async function isEpisodeDubbed(animeSession, epSession) {
     const cKey = `d2_${epSession}`;
     const hit = cacheGet(cKey);
@@ -179,7 +226,6 @@
       WARN("A failed:", e.message);
     }
 
-    // If API check fails, ALWAYS fallback to the heavy HTML check. Binary Search makes this fast enough.
     if (!r) {
       try {
         r = await checkViaPlayPage(animeSession, epSession);
@@ -227,7 +273,6 @@
     return highestDubIndex + 1;
   }
 
-  // ── CSS for badge + spinner ────────────────────────────────────────────────
   document.head.insertAdjacentHTML(
     "beforeend",
     `<style>
@@ -237,9 +282,9 @@
       color: #ffffff !important; font-family: sans-serif !important; font-size: 11px !important; font-weight: 700 !important;
       line-height: 1 !important; padding: 3px 7px !important; border-radius: 3px !important;
       letter-spacing: .4px !important; pointer-events: none !important; box-shadow: 0 1px 3px rgba(0,0,0,.55) !important;
-      display: inline-block !important; text-indent: 0 !important;
+      display: inline-flex !important; align-items: center !important; gap: 3px !important; text-indent: 0 !important;
     }
-    .dub-badge { background: #e8710a !important; right: 5px !important; left: auto !important; }
+    .dub-badge { background: #d92558 !important; right: 5px !important; left: auto !important; }
     .dub-badge-home { background: #d92558 !important; right: 5px !important; left: auto !important; }
     .dub-spin {
       position: absolute !important; top: 6px !important; bottom: auto !important; z-index: 9999 !important;
@@ -264,7 +309,7 @@
     if (anchor.querySelector(".dub-badge-home")) return;
     const b = document.createElement("span");
     b.className = "dub-badge-home";
-    b.textContent = text;
+    b.textContent = `🎙 ${text}`;
     anchor.appendChild(b);
   }
 
@@ -279,94 +324,101 @@
     }
   }
 
-  // ════════════════════════════════════════════════════════════════════════════
-  //  ROUTING
-  // ════════════════════════════════════════════════════════════════════════════
   const path = location.pathname;
 
-  // ── /anime/{session} (OPTIMIZED DOM BINARY SEARCH) ────────────────────────
-  const animeM = path.match(/^\/anime\/([^/?#]+)/);
-  if (animeM) {
-    const animeSession = animeM[1];
+  if (/^\/anime\/([^/?#]+)/.test(path)) {
     let isAnimeScanning = false;
 
     async function scanAnimeCards() {
       if (isAnimeScanning) return;
       isAnimeScanning = true;
 
-      let list = Array.from(
-        document.querySelectorAll(`a[href*="/play/${animeSession}/"]`),
-      );
-      if (!list.length) {
-        list = Array.from(
+      try {
+        let list = Array.from(
           document.querySelectorAll('a[href*="/play/"]'),
-        ).filter((a) =>
-          /\/play\/[^/]+\/[^/]+/.test(a.getAttribute("href") || ""),
+        ).filter(
+          (a) =>
+            !a.closest(
+              ".search-results, #search, .search, .autocomplete, .dropdown",
+            ),
         );
-      }
 
-      list.reverse();
+        const work = [];
+        for (const anchor of list) {
+          if (anchor.dataset.dubScanned) continue;
 
-      const work = [];
-      for (const anchor of list) {
-        if (anchor.dataset.dubScanned) continue;
-        const m = (anchor.getAttribute("href") || "").match(
-          /\/play\/[^/]+\/([^/?#]+)/,
-        );
-        if (m) {
-          anchor.dataset.dubScanned = "true";
-          work.push({ anchor, epSession: m[1] });
+          const href = anchor.getAttribute("href") || "";
+          const m = href.match(/(?:\/play\/)([^/?#]+)\/([^/?#]+)/);
+          if (m) {
+            anchor.dataset.dubScanned = "true";
+            work.push({ anchor, animeUuid: m[1], epUuid: m[2] });
+          }
         }
-      }
 
-      if (work.length > 0) {
-        pill.set("fast scanning…");
+        if (work.length > 0) {
+          pill.set("fast scanning…");
+          work.reverse();
 
-        let highestDubIndex = -1;
+          let highestDubIndex = -1;
 
-        // Binary Search the DOM Elements
-        const firstDub = await isEpisodeDubbed(animeSession, work[0].epSession);
-        if (firstDub) {
-          const lastDub = await isEpisodeDubbed(
-            animeSession,
-            work[work.length - 1].epSession,
+          const firstDub = await isEpisodeDubbed(
+            work[0].animeUuid,
+            work[0].epUuid,
           );
-          if (lastDub) {
-            highestDubIndex = work.length - 1; // Entire page is dubbed
-          } else {
-            let low = 0;
-            let high = work.length - 1;
-            while (low <= high) {
-              let mid = Math.floor((low + high) / 2);
-              const isDub = await isEpisodeDubbed(
-                animeSession,
-                work[mid].epSession,
-              );
-              if (isDub) {
-                highestDubIndex = mid;
-                low = mid + 1;
-              } else {
-                high = mid - 1;
+
+          if (firstDub) {
+            const lastDub = await isEpisodeDubbed(
+              work[work.length - 1].animeUuid,
+              work[work.length - 1].epUuid,
+            );
+            if (lastDub) {
+              highestDubIndex = work.length - 1;
+            } else {
+              let low = 0;
+              let high = work.length - 1;
+              while (low <= high) {
+                let mid = Math.floor((low + high) / 2);
+                const isDub = await isEpisodeDubbed(
+                  work[mid].animeUuid,
+                  work[mid].epUuid,
+                );
+                if (isDub) {
+                  highestDubIndex = mid;
+                  low = mid + 1;
+                } else {
+                  high = mid - 1;
+                }
               }
             }
           }
-        }
 
-        // Apply badges to all episodes up to the chronological boundary
-        let dubbed = 0;
-        for (let i = 0; i <= highestDubIndex; i++) {
-          const item = work[i];
-          if (getComputedStyle(item.anchor).position === "static") {
-            item.anchor.style.setProperty("position", "relative", "important");
+          let dubbed = 0;
+          for (let i = 0; i <= highestDubIndex; i++) {
+            const item = work[i];
+            let target = item.anchor;
+
+            let img = target.querySelector("img");
+            if (img) {
+              target = img.closest("a") || img.parentElement;
+            }
+
+            if (getComputedStyle(target).position === "static") {
+              target.style.setProperty("position", "relative", "important");
+            }
+            addBadge(target);
+            dubbed++;
           }
-          addBadge(item.anchor);
-          dubbed++;
-        }
 
-        pill.set(`Page: ${dubbed} DUB ✓`);
+          pill.set(`Page: ${dubbed} DUB ✓`);
+          setTimeout(() => pill.hide(), 4000);
+        }
+      } catch (e) {
+        console.error("[DUB] scanAnimeCards error:", e);
+        pill.set("scan error");
         setTimeout(() => pill.hide(), 4000);
+      } finally {
+        isAnimeScanning = false;
       }
-      isAnimeScanning = false;
     }
 
     scanAnimeCards();
@@ -380,7 +432,6 @@
     return;
   }
 
-  // ── /play/{animeSession}/{epSession} ──────────────────────────────────────
   const playM = path.match(/^\/play\/([^/?#]+)\/([^/?#]+)/);
   if (playM) {
     const [, animeSession, epSession] = playM;
@@ -403,7 +454,6 @@
     return;
   }
 
-  // ── Home / latest releases ─────────────────────────────────────────────────
   if (/^\/?$|^\/home/.test(path)) {
     let isScanning = false;
 
@@ -411,88 +461,108 @@
       if (isScanning) return;
       isScanning = true;
 
-      const work = [];
-      for (const a of document.querySelectorAll(
-        'a[href*="/anime/"], a[href*="/play/"]',
-      )) {
-        if (a.dataset.dubScanned) continue;
+      try {
+        const work = [];
+        for (const a of document.querySelectorAll(
+          'a[href*="/anime/"], a[href*="/play/"]',
+        )) {
+          if (a.dataset.dubScanned) continue;
+          if (
+            a.closest(
+              ".search-results, #search, .search, .autocomplete, .dropdown",
+            )
+          )
+            continue;
 
-        const href = a.getAttribute("href") || "";
-        const m = href.match(/(?:\/anime\/|\/play\/)([^/?#]+)/);
-        if (!m) continue;
+          const href = a.getAttribute("href") || "";
+          const m = href.match(/(?:\/anime\/|\/play\/)([^/?#]+)/);
+          if (!m) continue;
 
-        a.dataset.dubScanned = "true";
+          a.dataset.dubScanned = "true";
 
-        let img = a.querySelector("img");
-        let targetElement = a;
+          let img = a.querySelector("img");
+          let targetElement = a;
 
-        if (!img) {
-          let parent = a.parentElement;
-          let depth = 0;
-          while (parent && depth < 3) {
-            img = parent.querySelector("img");
-            if (img) break;
-            parent = parent.parentElement;
-            depth++;
+          if (!img) {
+            let parent = a.parentElement;
+            let depth = 0;
+            while (parent && depth < 3) {
+              img = parent.querySelector("img");
+              if (img) break;
+              parent = parent.parentElement;
+              depth++;
+            }
           }
+
+          if (!img) continue;
+
+          targetElement = img.closest("a") || img.parentElement;
+          if (getComputedStyle(targetElement).position === "static") {
+            targetElement.style.setProperty(
+              "position",
+              "relative",
+              "important",
+            );
+          }
+
+          work.push({ anchor: targetElement, animeSession: m[1] });
         }
 
-        if (!img) continue;
+        if (work.length > 0) {
+          pill.set("scanning home…");
+          for (let i = 0; i < work.length; i += BATCH_SIZE) {
+            await Promise.all(
+              work
+                .slice(i, i + BATCH_SIZE)
+                .map(async ({ anchor, animeSession }) => {
+                  spin(anchor, true, "home");
+                  const hk = `h2_${animeSession}`;
+                  let stats = cacheGet(hk);
 
-        targetElement = img.closest("a") || img.parentElement;
-        if (getComputedStyle(targetElement).position === "static") {
-          targetElement.style.setProperty("position", "relative", "important");
-        }
+                  if (stats === undefined) {
+                    try {
+                      const rel = await apiFetch(
+                        `/api?m=release&id=${animeSession}&sort=episode_asc&page=1`,
+                      );
+                      const eps = Array.isArray(rel.data)
+                        ? rel.data
+                        : Object.values(rel.data || {});
 
-        work.push({ anchor: targetElement, animeSession: m[1] });
-      }
+                      const totalCount = rel.total || eps.length;
+                      const dubCount = await findDubCountBinary(
+                        animeSession,
+                        eps,
+                      );
 
-      if (work.length > 0) {
-        pill.set("scanning home…");
-        for (let i = 0; i < work.length; i += BATCH_SIZE) {
-          await Promise.all(
-            work
-              .slice(i, i + BATCH_SIZE)
-              .map(async ({ anchor, animeSession }) => {
-                spin(anchor, true, "home");
-                const hk = `h2_${animeSession}`;
-                let stats = cacheGet(hk);
-
-                if (stats === undefined) {
-                  try {
-                    const rel = await apiFetch(
-                      `/api?m=release&id=${animeSession}&sort=episode_asc&page=1`,
-                    );
-                    const eps = Array.isArray(rel.data)
-                      ? rel.data
-                      : Object.values(rel.data || {});
-
-                    const totalCount = rel.total || eps.length;
-                    const dubCount = await findDubCountBinary(
-                      animeSession,
-                      eps,
-                    );
-
-                    stats = { dubCount, totalCount };
-                    cacheSet(hk, stats);
-                  } catch (e) {
-                    WARN("home error:", animeSession, e.message);
-                    spin(anchor, false, "home");
-                    return;
+                      stats = { dubCount, totalCount };
+                      cacheSet(hk, stats);
+                    } catch (e) {
+                      WARN("home error:", animeSession, e.message);
+                      spin(anchor, false, "home");
+                      return;
+                    }
                   }
-                }
 
-                spin(anchor, false, "home");
-                if (stats && stats.dubCount > 0) {
-                  addHomeBadge(anchor, `${stats.dubCount}/${stats.totalCount}`);
-                }
-              }),
-          );
+                  spin(anchor, false, "home");
+                  if (stats && stats.dubCount > 0) {
+                    addHomeBadge(
+                      anchor,
+                      `${stats.dubCount}/${stats.totalCount}`,
+                    );
+                  }
+                }),
+            );
+          }
+          pill.set("done");
+          setTimeout(() => pill.hide(), 4000);
         }
-        pill.set("done");
+      } catch (e) {
+        console.error("[DUB] Home scan error:", e);
+        pill.set("scan error");
         setTimeout(() => pill.hide(), 4000);
+      } finally {
+        isScanning = false;
       }
-      isScanning = false;
     }
 
     await scanHomeCards();
