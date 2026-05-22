@@ -42,4 +42,6 @@ Edit these variables at the top of the script if needed:
 
 ## License
 
-[GPLv3](LICENSE)
+<a href="LICENSE">
+  <img src="https://upload.wikimedia.org/wikipedia/commons/9/93/GPLv3_Logo.svg" width="80" alt="GPLv3 Logo">
+</a>
