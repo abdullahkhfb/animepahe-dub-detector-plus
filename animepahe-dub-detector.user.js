@@ -7,9 +7,8 @@
 // @icon         https://raw.githubusercontent.com/abdullahkhfb/animepahe-dub-detector/main/icon/animepahe-dub-detector.svg
 // @match        *://animepahe.pw/*
 // @match        *://animepahe.org/*
-// @updateURL    https://raw.githubusercontent.com/abdullahkhfb/animepahe-dub-detector/main/animepahe-dub.user.js
-// @downloadURL  https://raw.githubusercontent.com/abdullahkhfb/animepahe-dub-detector/main/animepahe-dub.user.js
-// @grant        GM_getValue
+// @downloadURL https://update.greasyfork.org/scripts/577043/animepahe-DUB-Detector.user.js
+// @updateURL https://update.greasyfork.org/scripts/577043/animepahe-DUB-Detector.meta.js
 // @grant        GM_setValue
 // @grant        GM_deleteValue
 // @grant        GM_listValues
