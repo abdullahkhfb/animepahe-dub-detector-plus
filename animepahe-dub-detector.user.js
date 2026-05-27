@@ -8,7 +8,7 @@
 // @match        *://animepahe.pw/*
 // @match        *://animepahe.org/*
 // @downloadURL https://update.greasyfork.org/scripts/577043/animepahe-DUB-Detector.user.js
-// @updateURL https://update.greasyfork.org/scripts/577043/animepahe-DUB-Detector.meta.js
+// @updateURL   https://update.greasyfork.org/scripts/577043/animepahe-DUB-Detector.meta.js
 // @grant        GM_setValue
 // @grant        GM_deleteValue
 // @grant        GM_listValues
