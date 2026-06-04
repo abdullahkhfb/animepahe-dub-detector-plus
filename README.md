@@ -5,45 +5,41 @@
 
 Tags dubbed episodes with DUB badges on animepahe — per episode, automatically.
 
-> [!IMPORTANT]
-> **This script is currently completely non-functional.** animepahe has implemented strict Cloudflare rate-limiting and anti-bot protection. Attempting to scan episodes will result in instant Cloudflare blocks, which stops the script from working and poisons the local cache with false data.
->
-> **Note: A workaround for this rate limiting issue is currently being considered.**
+> [!NOTE]
+> **Rate Limiting Resolved**
 
 ## Features
 
-- Detects English-dubbed episodes on anime pages, play pages, and the home page.
-- Native clear-cache button built into the status pill and extension menu for instant data resets.
-- Two-stage validation: queries the episode links API, then falls back to parsing the play page HTML.
-- Results cached for 12 hours (configurable) to avoid repeated requests.
-- Batch processing (3 episodes at a time) to reduce load.
-- Status pill in bottom-right corner shows progress, then disappears.
+- Detects English-dubbed episodes across anime pages, play pages, and the home page.
+- **Optimized Scanning:** Uses a concurrent multi-probe binary search to map out dubbed episode boundaries with minimal API requests.
+- **Anti-Rate Limit Throttler:** Built-in queue management automatically delays and retries requests to prevent temporary Cloudflare blocks.
+- **Smart Caching:** Results are cached for 24 hours with automatic garbage collection for stale entries to keep local data fresh.
+- **Live UI Feedback:** Floating status pill in the bottom-right corner displays real-time ETA percentage tracking.
+- **Quick Reset:** Native `Clear Dub Detector Cache` command available directly in your userscript manager's menu for instant data resets.
 
 ## Installation
 
 1. Install a userscript manager.  
-   **Recommended: [ScriptCat](https://scriptcat.org/)** (fast, modern, with cloud backup, open-source ).
-2. Open the [raw script](https://update.greasyfork.org/scripts/577043/AnimePahe-DUB-Detector.user.js) your manager will prompt to install.
+   **Recommended: [ScriptCat](https://scriptcat.org/)** (fast, modern, with cloud backup, open-source).
+2. Open the [raw script](https://update.greasyfork.org/scripts/577043/animepahe-DUB-Detector.user.js); your manager will prompt to install it.
 3. Click Install.
 
-Visible results:
+### Visual Indicators:
 
 - **Anime page**: Pink `DUB` badge on dubbed episode cards (top-right).
-- **Play page**: `DUB` badge next to the episode number.
-- **Home page**: Pink badge with a microphone icon like `🎙️ 4/12` on anime covers (top-right), showing dubbed/total episodes.
-- **Cache Control**: A dedicated `Clear Cache` button appears on the status pill during active scans, alongside an extension menu fallback command.
+- **Play page**: `DUB` badge seamlessly integrated next to the episode title.
+- **Home page**: Pink badge with a microphone icon (e.g., `🎙️ 4/12`) on anime covers (top-right), showing the ratio of dubbed to total episodes.
 
 ## Configuration
 
-Edit these variables at the top of the script if needed:
+You can tweak these constants at the top of the script to adjust performance:
 
-- `CACHE_TTL` – cache lifetime in milliseconds (default: 12 hours).
-- `BATCH_SIZE` – concurrent checks per batch (default: 3).
+- `CACHE_TTL` – How long results are stored in milliseconds (default: 24 hours / `24 * 60 * 60 * 1000`).
+- `PARALLEL_PROBES` – The number of concurrent checks executed during the binary search phase (default: 8).
 
 ## Known Issues
 
-- **Rate limiting (HTTP 429) & Cloudflare Blocks**: As noted above, this currently breaks the script entirely. A workaround is being considered.
-- Home page uses a MutationObserver with 500ms debounce for newly loaded content.
+- The home page relies on a MutationObserver with a debounce function to detect newly loaded content, which may cause a slight delay before badges appear when scrolling.
 
 ## License
 
