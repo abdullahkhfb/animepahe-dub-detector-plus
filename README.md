@@ -5,6 +5,11 @@
 
 Tags dubbed episodes with DUB badges on animepahe — per episode, automatically.
 
+> [!IMPORTANT]
+> **This script is currently completely non-functional.** animepahe has implemented strict Cloudflare rate-limiting and anti-bot protection. Attempting to scan episodes will result in instant Cloudflare blocks, which stops the script from working and poisons the local cache with false data.
+>
+> **Note: A workaround for this rate limiting issue is currently being considered.**
+
 ## Features
 
 - Detects English-dubbed episodes on anime pages, play pages, and the home page.
@@ -37,7 +42,7 @@ Edit these variables at the top of the script if needed:
 
 ## Known Issues
 
-- Rate limiting (HTTP 429). The script batches requests and caches results; if limited, wait a few minutes.
+- **Rate limiting (HTTP 429) & Cloudflare Blocks**: As noted above, this currently breaks the script entirely. A workaround is being considered.
 - Home page uses a MutationObserver with 500ms debounce for newly loaded content.
 
 ## License
