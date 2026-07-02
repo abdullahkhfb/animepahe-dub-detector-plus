@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         animepahe-dub-detector-plus
-// @namespace    https://github.com/abdullahkhfb/animepahe-dub-detector
-// @version      1.0.0
+// @namespace    https://github.com/abdullahkhfb/animepahe-dub-detector-plus
+// @version      1.0.1
 // @description  Tags dubbed episodes with DUB badges on animepahe. Includes an in-page Advanced Settings panel powered by your script manager (GM storage).
 // @license      GPLv3
 // @author       abdullahkhfb
-// @icon         https://raw.githubusercontent.com/abdullahkhfb/animepahe-dub-detector/main/icon/animepahe-dub-detector.svg
+// @icon         https://raw.githubusercontent.com/abdullahkhfb/animepahe-dub-detector-pus/main/icon/animepahe-dub-detector.svg
 // @match        *://animepahe.pw/*
 // @match        *://animepahe.org/*
 // @grant        GM_setValue
@@ -18,6 +18,8 @@
 // @grant        GM_info
 // @run-at       document-idle
 // @noframes
+// @downloadURL  https://update.greasyfork.org/scripts/585305/animepahe-dub-detector-plus.user.js
+// @updateURL    https://update.greasyfork.org/scripts/585305/animepahe-dub-detector-plus.meta.js
 // ==/UserScript==
 
 // ─── Constants ───────────────────────────────────────────────────────────────
