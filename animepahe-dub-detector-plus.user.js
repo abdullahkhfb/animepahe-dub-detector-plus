@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         animepahe-dub-detector-plus
 // @namespace    https://github.com/abdullahkhfb/animepahe-dub-detector-plus
-// @version      1.0.1
+// @version      2.0.0
 // @description  Tags dubbed episodes with DUB badges on animepahe. Includes an in-page Advanced Settings panel powered by your script manager (GM storage).
 // @license      GPLv3
 // @author       abdullahkhfb
@@ -568,6 +568,7 @@ class SettingsPanel {
   constructor(pill, onChanged) {
     this._pill = pill;
     this._onChanged = onChanged;
+    this._pending = {};
   }
   open() {
     if (document.getElementById(SETTINGS_PANEL_ID)) return;
@@ -636,24 +637,20 @@ class SettingsPanel {
     const warn = document.createElement("div");
     warn.className = "ape-set-warn";
     warn.textContent =
-      "These control internal timing, caching, and request behavior. Defaults work well for almost everyone - change with care.";
+      "These control internal timing, caching, and request behavior. Defaults work well for almost everyone - change with care. Edits below aren't saved until you press Apply Changes.";
     panel.appendChild(warn);
-    // advanced groups
+    // advanced groups — collapsible, in their own scrollable region so the
+    // header/toggles/footer stay put while this part scrolls
+    this._pending = {};
+    const scrollWrap = document.createElement("div");
+    scrollWrap.className = "ape-set-scroll";
     const groups = document.createElement("div");
     groups.className = "ape-set-groups";
     for (const group of ADVANCED_SETTINGS_SCHEMA) {
-      const groupEl = document.createElement("div");
-      groupEl.className = "ape-set-group";
-      const heading = document.createElement("p");
-      heading.className = "ape-set-group-title";
-      heading.textContent = group.group;
-      groupEl.appendChild(heading);
-      for (const item of group.items) {
-        groupEl.appendChild(this._buildNumberRow(item, settings[item.key]));
-      }
-      groups.appendChild(groupEl);
+      groups.appendChild(this._buildGroup(group, settings));
     }
-    panel.appendChild(groups);
+    scrollWrap.appendChild(groups);
+    panel.appendChild(scrollWrap);
     // reset all
     const resetAll = document.createElement("button");
     resetAll.type = "button";
@@ -694,11 +691,29 @@ class SettingsPanel {
     });
     cacheRow.appendChild(cacheBtn);
     panel.appendChild(cacheRow);
+    // apply bar — advanced-setting edits are staged and only take effect
+    // once this is pressed
+    const applyBar = document.createElement("div");
+    applyBar.className = "ape-set-apply-bar";
+    const applyStatus = document.createElement("span");
+    applyStatus.className = "ape-set-apply-status";
+    const applyBtn = document.createElement("button");
+    applyBtn.type = "button";
+    applyBtn.className = "ape-set-apply-btn";
+    applyBtn.textContent = "Apply Changes";
+    applyBtn.disabled = true;
+    applyBtn.addEventListener("click", () => this._applyPending());
+    applyBar.appendChild(applyStatus);
+    applyBar.appendChild(applyBtn);
+    panel.appendChild(applyBar);
+    this._applyBtn = applyBtn;
+    this._applyStatus = applyStatus;
+    this._updateApplyState();
     // footer
     const footer = document.createElement("div");
     footer.className = "ape-set-footer";
     footer.textContent =
-      "Changes are saved instantly. Reload the page to apply.";
+      "Feature toggles above save instantly. Reload the page after any change to apply it.";
     panel.appendChild(footer);
     overlay.appendChild(panel);
     overlay.addEventListener("click", (e) => {
@@ -715,6 +730,88 @@ class SettingsPanel {
     document.addEventListener("keydown", onKey);
     // focus the close button for keyboard users
     setTimeout(() => closeBtn.focus(), 50);
+  }
+  _buildGroup(group, settings) {
+    const groupEl = document.createElement("div");
+    groupEl.className = "ape-set-group";
+
+    const headerBtn = document.createElement("div");
+    headerBtn.className = "ape-set-group-header";
+    headerBtn.setAttribute("role", "button");
+    headerBtn.setAttribute("tabindex", "0");
+    headerBtn.setAttribute("aria-expanded", "false");
+
+    const title = document.createElement("span");
+    title.className = "ape-set-group-title";
+    title.textContent = group.group;
+
+    const count = document.createElement("span");
+    count.className = "ape-set-group-count";
+    count.textContent = String(group.items.length);
+
+    const chevron = document.createElement("span");
+    chevron.className = "ape-set-group-chevron";
+    chevron.innerHTML =
+      '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M2.5 4.5 6 8l3.5-3.5"/></svg>';
+
+    headerBtn.appendChild(title);
+    headerBtn.appendChild(count);
+    headerBtn.appendChild(chevron);
+
+    const body = document.createElement("div");
+    body.className = "ape-set-group-body";
+    body.hidden = true;
+    for (const item of group.items) {
+      body.appendChild(this._buildNumberRow(item, settings[item.key]));
+    }
+
+    const toggleOpen = () => {
+      const open = groupEl.classList.toggle("open");
+      body.hidden = !open;
+      headerBtn.setAttribute("aria-expanded", String(open));
+    };
+    headerBtn.addEventListener("click", toggleOpen);
+    headerBtn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        toggleOpen();
+      }
+    });
+
+    groupEl.appendChild(headerBtn);
+    groupEl.appendChild(body);
+    return groupEl;
+  }
+  _updateApplyState() {
+    const count = Object.keys(this._pending).length;
+    if (!this._applyBtn) return;
+    this._applyBtn.disabled = count === 0;
+    this._applyBtn.classList.remove("saved");
+    if (count === 0) {
+      this._applyBtn.textContent = "Apply Changes";
+      this._applyStatus.textContent = "";
+      this._applyStatus.classList.remove("pending");
+    } else {
+      this._applyBtn.textContent = `Apply Changes (${count})`;
+      this._applyStatus.textContent = `${count} unsaved change${count === 1 ? "" : "s"}`;
+      this._applyStatus.classList.add("pending");
+    }
+  }
+  _applyPending() {
+    if (Object.keys(this._pending).length === 0) return;
+    storage.setSettings(this._pending);
+    this._pending = {};
+    document
+      .querySelectorAll(`#${SETTINGS_PANEL_ID} .ape-set-row.dirty`)
+      .forEach((row) => row.classList.remove("dirty"));
+    this._applyBtn.textContent = "Applied ✓";
+    this._applyBtn.classList.add("saved");
+    this._applyBtn.disabled = true;
+    this._applyStatus.textContent = "Saved — reload the page to apply";
+    this._applyStatus.classList.remove("pending");
+    this._onChanged();
+    this._pill.show("🎙 DUB: settings applied ✓", 2200);
+    setTimeout(() => this._updateApplyState(), 1600);
   }
   _buildToggleRow(key, label, desc, checked, onSave) {
     const row = document.createElement("div");
@@ -754,11 +851,18 @@ class SettingsPanel {
   _buildNumberRow(item, currentValue) {
     const row = document.createElement("div");
     row.className = "ape-set-row";
+    row.dataset.key = item.key;
     const top = document.createElement("div");
     top.className = "ape-set-row-top";
     const label = document.createElement("label");
     label.className = "ape-set-row-label";
-    label.textContent = item.label;
+    const dirtyDot = document.createElement("span");
+    dirtyDot.className = "ape-set-dirty-dot";
+    dirtyDot.title = "Unapplied change";
+    const labelText = document.createElement("span");
+    labelText.textContent = item.label;
+    label.appendChild(dirtyDot);
+    label.appendChild(labelText);
     label.setAttribute("for", `adv-${item.key}`);
     const resetBtn = document.createElement("button");
     resetBtn.type = "button";
@@ -780,24 +884,29 @@ class SettingsPanel {
     input.max = String(item.max);
     input.step = String(item.step);
     input.value = String(currentValue ?? item.default);
-    const commit = () => {
-      let value = Number(input.value);
-      if (!Number.isFinite(value)) value = item.default;
+    // Edits are staged into this._pending, not saved directly — nothing
+    // takes effect until "Apply Changes" is pressed.
+    const stage = (value) => {
       value = Math.min(item.max, Math.max(item.min, value));
       input.value = String(value);
       const current = storage.getSettings()[item.key];
-      if (value !== current) {
-        storage.setSettings({ [item.key]: value });
-        this._onChanged();
+      if (value === current) {
+        delete this._pending[item.key];
+        row.classList.remove("dirty");
+      } else {
+        this._pending[item.key] = value;
+        row.classList.add("dirty");
       }
+      this._updateApplyState();
+    };
+    const commit = () => {
+      let value = Number(input.value);
+      if (!Number.isFinite(value)) value = item.default;
+      stage(value);
     };
     input.addEventListener("change", commit);
     input.addEventListener("blur", commit);
-    resetBtn.addEventListener("click", () => {
-      input.value = String(item.default);
-      storage.setSettings({ [item.key]: item.default });
-      this._onChanged();
-    });
+    resetBtn.addEventListener("click", () => stage(item.default));
     row.appendChild(top);
     row.appendChild(desc);
     row.appendChild(input);
@@ -1408,7 +1517,8 @@ class DubDetector {
 
 #${SETTINGS_PANEL_ID} {
   width: 100%; max-width: 460px;
-  max-height: 90vh; overflow-y: auto;
+  max-height: 88vh;
+  display: flex; flex-direction: column;
   background: #0b0b1c;
   color: #e4e4f0;
   border: 1px solid rgba(255,255,255,0.08);
@@ -1416,6 +1526,7 @@ class DubDetector {
   font: 13px/1.5 system-ui, -apple-system, sans-serif;
   box-shadow: 0 20px 60px rgba(0,0,0,0.65);
   animation: ape-set-slide 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+  overflow: hidden;
 }
 @keyframes ape-set-slide {
   from { transform: translateY(8px) scale(0.98); opacity: 0 }
@@ -1499,30 +1610,77 @@ class DubDetector {
   margin: 12px 14px 0;
 }
 
+.ape-set-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 14px 4px;
+}
+.ape-set-scroll::-webkit-scrollbar { width: 7px; }
+.ape-set-scroll::-webkit-scrollbar-track { background: transparent; }
+.ape-set-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.12); border-radius: 4px;
+}
+.ape-set-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.22);
+}
+
 .ape-set-groups {
-  padding: 4px 14px 0;
-  display: flex; flex-direction: column; gap: 12px;
+  display: flex; flex-direction: column; gap: 8px;
 }
-.ape-set-group { display: flex; flex-direction: column; gap: 8px; }
+.ape-set-group {
+  background: #13132a; border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 8px; overflow: hidden;
+}
+.ape-set-group-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer; user-select: none;
+  transition: background 0.15s;
+}
+.ape-set-group-header:hover { background: rgba(255,255,255,0.04); }
 .ape-set-group-title {
-  font-size: 10px; font-weight: 700; color: #7878a0;
+  flex: 1;
+  font-size: 10px; font-weight: 700; color: #e4e4f0;
   letter-spacing: 0.08em; text-transform: uppercase;
-  border-top: 1px solid rgba(255,255,255,0.06);
-  padding-top: 10px; margin: 0;
 }
-.ape-set-group:first-child .ape-set-group-title {
-  border-top: none; padding-top: 0;
+.ape-set-group-count {
+  font-size: 10px; font-weight: 600; color: #7878a0;
+  background: #1a1a34; border-radius: 8px; padding: 1px 6px;
+}
+.ape-set-group-chevron {
+  display: flex; flex-shrink: 0; color: #7878a0;
+  transition: transform 0.2s ease;
+}
+.ape-set-group-chevron svg { width: 11px; height: 11px; }
+.ape-set-group.open .ape-set-group-chevron { transform: rotate(180deg); }
+.ape-set-group-body {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 0 12px 12px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  padding-top: 10px;
+  margin-top: -1px;
 }
 
 .ape-set-row {
   background: #1a1a34; border: 1px solid rgba(255,255,255,0.07);
   border-radius: 6px; padding: 8px 10px;
   display: flex; flex-direction: column; gap: 5px;
+  transition: border-color 0.15s;
 }
+.ape-set-row.dirty { border-color: #e8710a; }
 .ape-set-row-top {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
 }
-.ape-set-row-label { font-size: 11.5px; font-weight: 600; color: #e4e4f0; }
+.ape-set-row-label {
+  font-size: 11.5px; font-weight: 600; color: #e4e4f0;
+  display: flex; align-items: center; gap: 6px;
+}
+.ape-set-dirty-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #e8710a; flex-shrink: 0; display: none;
+}
+.ape-set-row.dirty .ape-set-dirty-dot { display: block; }
 .ape-set-reset-btn {
   flex-shrink: 0; width: 22px; height: 22px;
   display: flex; align-items: center; justify-content: center;
@@ -1575,11 +1733,36 @@ class DubDetector {
   background: rgba(217,37,88,0.18); color: #fff; border-color: rgba(217,37,88,0.4);
 }
 
+.ape-set-apply-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px 0;
+  margin-top: 12px;
+}
+.ape-set-apply-status {
+  flex: 1;
+  font-size: 10.5px; color: #7878a0;
+}
+.ape-set-apply-status.pending { color: #e8710a; font-weight: 600; }
+.ape-set-apply-btn {
+  flex-shrink: 0;
+  font-size: 12px; font-weight: 700;
+  padding: 8px 16px; border-radius: 6px;
+  background: #e8710a; color: #fff; border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.18s, transform 0.1s, opacity 0.18s;
+}
+.ape-set-apply-btn:hover:not(:disabled) { background: #f57f14; }
+.ape-set-apply-btn:active:not(:disabled) { transform: scale(0.97); }
+.ape-set-apply-btn:disabled {
+  background: #1a1a34; color: #7878a0; cursor: default;
+}
+.ape-set-apply-btn.saved { background: #2ecc71; }
+
 .ape-set-footer {
-  padding: 12px 18px 16px;
+  padding: 10px 18px 16px;
   font-size: 11px; color: #7878a0; text-align: center;
   border-top: 1px solid rgba(255,255,255,0.06);
-  margin-top: 12px;
+  margin-top: 10px;
 }
 `;
   try {
@@ -1648,7 +1831,7 @@ class DubDetector {
   }
   // Expose a tiny debugging hook on window (optional)
   window.apeDubDetector = {
-    version: "4.1.0",
+    version: "2.0.0",
     openSettings: () => panel.open(),
     clearCache: () => clearDubCache(),
     getSettings: () => storage.getSettings(),
