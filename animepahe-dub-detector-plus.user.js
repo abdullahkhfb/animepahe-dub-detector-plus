@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         animepahe-dub-detector-plus
 // @namespace    https://github.com/abdullahkhfb/animepahe-dub-detector-plus
-// @version      2.0.0
-// @description  Tags dubbed episodes with DUB badges on animepahe. Includes an in-page Advanced Settings panel powered by your script manager (GM storage).
+// @version      2.2.0
+// @description  Tags dubbed episodes on animepahe with DUB/SUB ONLY badges.
 // @license      GPLv3
 // @author       abdullahkhfb
-// @icon         https://raw.githubusercontent.com/abdullahkhfb/animepahe-dub-detector-pus/main/icon/animepahe-dub-detector.svg
+// @icon         https://raw.githubusercontent.com/abdullahkhfb/animepahe-dub-detector-plus/main/icon/animepahe-dub-detector.svg
 // @match        *://animepahe.pw/*
 // @match        *://animepahe.org/*
 // @grant        GM_setValue
@@ -22,7 +22,13 @@
 // @updateURL    https://update.greasyfork.org/scripts/585305/animepahe-dub-detector-plus.meta.js
 // ==/UserScript==
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+// The GM_* functions/values below are fixed, unrenamable globals supplied by
+// the userscript manager (Tampermonkey/Violentmonkey/etc.) per the
+// Greasemonkey API spec, so the naming-convention rules that assume
+// project-owned identifiers don't apply to them.
+/* eslint-disable camelcase, new-cap */
+
+// Constants.
 const PILL_ID = "ape-dub-pill";
 const SETTINGS_PANEL_ID = "ape-dub-settings-panel";
 const SETTINGS_OVERLAY_ID = "ape-dub-settings-overlay";
@@ -33,113 +39,33 @@ const CACHE_VERSION = "v1";
 const AUDIO_DUB_VALUES = new Set(["eng", "english", "dub", "dubbed"]);
 // eslint-disable-next-line no-unused-vars
 const SEARCH_EXCLUDE =
-  ".ui-autocomplete, .search-results, header, .top-header, form, #search, .autocomplete, .dropdown";
-// ─── Settings schema ─────────────────────────────────────────────────────────
-const ADVANCED_SETTINGS_SCHEMA = [
-  {
-    group: "DUB Detector",
-    items: [
-      {
-        key: "cacheTtlHours",
-        label: "Cache duration (hours)",
-        desc: "How long detected DUB/SUB results stay cached before being re-checked.",
-        min: 1,
-        max: 168,
-        step: 1,
-        default: 24,
-      },
-      {
-        key: "dubParallelProbes",
-        label: "Binary-search probes",
-        desc: "How many points are probed per step when narrowing down which episodes are dubbed. Higher finds the answer in fewer rounds but fires more requests at once.",
-        min: 2,
-        max: 30,
-        step: 1,
-        default: 12,
-      },
-      {
-        key: "dubBatchDelay",
-        label: "Delay between batches (ms)",
-        desc: "Pause inserted between scan batches/rounds so the site isn't hammered.",
-        min: 0,
-        max: 10000,
-        step: 100,
-        default: 2000,
-      },
-      {
-        key: "dubHomeBatchSize",
-        label: "Homepage scan batch size",
-        desc: "How many homepage cards are checked for dubs at the same time.",
-        min: 1,
-        max: 10,
-        step: 1,
-        default: 2,
-      },
-    ],
-  },
-  {
-    group: "Network Throttler",
-    items: [
-      {
-        key: "throttleMinInterval",
-        label: "Min interval between requests (ms)",
-        desc: "Minimum spacing enforced between outgoing requests to animepahe.",
-        min: 0,
-        max: 2000,
-        step: 10,
-        default: 120,
-      },
-      {
-        key: "throttleJitter",
-        label: "Jitter (ms)",
-        desc: "Random variation added on top of the minimum interval, so requests don't go out at a perfectly robotic cadence.",
-        min: 0,
-        max: 1000,
-        step: 10,
-        default: 50,
-      },
-      {
-        key: "throttleMaxConcurrent",
-        label: "Max concurrent requests",
-        desc: "How many requests may be in flight at the same time.",
-        min: 1,
-        max: 20,
-        step: 1,
-        default: 6,
-      },
-      {
-        key: "throttleMaxRetries",
-        label: "Max retries on rate limit",
-        desc: "How many times a throttled (429/503) request is retried before giving up.",
-        min: 0,
-        max: 10,
-        step: 1,
-        default: 4,
-      },
-      {
-        key: "throttleBaseBackoff",
-        label: "Base backoff (ms)",
-        desc: "Starting wait time before retrying after a rate-limit response. Doubles with each retry.",
-        min: 500,
-        max: 30000,
-        step: 500,
-        default: 3000,
-      },
-    ],
-  },
-];
-const ADVANCED_DEFAULTS = ADVANCED_SETTINGS_SCHEMA.reduce((acc, group) => {
-  for (const item of group.items) {
-    acc[item.key] = item.default;
-  }
-  return acc;
-}, {});
+  ".ui-autocomplete, .search-results, header, " +
+  ".top-header, form, #search, .autocomplete, .dropdown";
+// Tuning constants.
+// These used to be user-configurable "Advanced Settings"; they are now fixed
+// so the settings panel only exposes the handful of options people actually
+// change.
+const CACHE_TTL_HOURS = 24;
+const CACHE_TTL_MS = CACHE_TTL_HOURS * 60 * 60 * 1000;
+const DUB_BATCH_DELAY_MS = 2000;
+const DUB_HOME_BATCH_SIZE = 2;
+const THROTTLE_MIN_INTERVAL_MS = 120;
+const THROTTLE_JITTER_MS = 50;
+const THROTTLE_MAX_CONCURRENT = 6;
+const THROTTLE_MAX_RETRIES = 4;
+const THROTTLE_BASE_BACKOFF_MS = 3000;
+// How long to wait after a page loads before the detector makes its first
+// network request, on any page type. This gives the site's own scripts a
+// head start on whatever they need to fetch, instead of racing them for
+// Cloudflare's rate limit budget right at page-load time.
+const SCAN_STARTUP_DELAY_MS = 1500;
+// Settings schema.
 const DEFAULT_SETTINGS = {
   dubEnabled: true,
   showSubOnlyBadges: true,
-  ...ADVANCED_DEFAULTS,
+  scanHomeEnabled: true,
 };
-// ─── GM-backed storage adapter ───────────────────────────────────────────────
+// GM-backed storage adapter.
 const storage = {
   get(key) {
     try {
@@ -185,18 +111,9 @@ const storage = {
     this.set(SETTINGS_KEY, JSON.stringify(next));
     return next;
   },
-  resetAdvanced() {
-    const current = this.getSettings();
-    const next = {
-      dubEnabled: current.dubEnabled,
-      showSubOnlyBadges: current.showSubOnlyBadges,
-      ...ADVANCED_DEFAULTS,
-    };
-    this.set(SETTINGS_KEY, JSON.stringify(next));
-    return next;
-  },
 };
-// ─── Cache module ────────────────────────────────────────────────────────────
+// Cache module.
+/** Parses a raw cache string into its timestamp and value parts. */
 function parseCacheEntry(raw) {
   if (!raw || typeof raw !== "string") return null;
   const pipe = raw.indexOf("|");
@@ -207,9 +124,11 @@ function parseCacheEntry(raw) {
   if (!rest.startsWith(CACHE_VERSION + "|")) return null;
   return { timestamp, valuePart: rest.slice(CACHE_VERSION.length + 1) };
 }
+/** Serializes a value into the versioned cache string format. */
 function makeCacheEntry(value) {
   return `${Date.now()}|${CACHE_VERSION}|${JSON.stringify(value)}`;
 }
+/** Reads a cached value for `key` if it exists and hasn't expired. */
 function readCache(key, ttlMs) {
   const raw = storage.get(key);
   const entry = parseCacheEntry(raw);
@@ -221,15 +140,19 @@ function readCache(key, ttlMs) {
     return null;
   }
 }
+/** Writes `value` to the cache under `key` with the current timestamp. */
 function writeCache(key, value) {
   storage.set(key, makeCacheEntry(value));
 }
+/** Builds the storage key for an episode's cached dub status. */
 function epCacheKey(epSession) {
   return `${EP_PREFIX}${epSession}`;
 }
+/** Builds the storage key for an anime's cached homepage stats. */
 function homeCacheKey(animeSession) {
   return `${HOME_PREFIX}${animeSession}`;
 }
+/** Removes cached entries older than `ttlMs` and returns how many. */
 function gcDubCache(ttlMs) {
   const now = Date.now();
   let removed = 0;
@@ -246,6 +169,7 @@ function gcDubCache(ttlMs) {
   }
   return removed;
 }
+/** Removes every cached dub-detection entry and returns the count. */
 function clearDubCache() {
   const allKeys = [
     ...storage.keysWithPrefix(EP_PREFIX),
@@ -254,94 +178,91 @@ function clearDubCache() {
   for (const key of allKeys) storage.remove(key);
   return allKeys.length;
 }
+/** Queues and paces outgoing requests, retrying on rate limits. */
 class RequestThrottler {
-  constructor(opts = {}) {
-    this._queue = [];
-    this._active = 0;
-    this._lastLaunch = 0;
-    this._backoffUntil = 0;
-    this._draining = false;
-    this._minInterval = opts.throttleMinInterval ?? 120;
-    this._jitter = opts.throttleJitter ?? 50;
-    this._maxConcurrent = opts.throttleMaxConcurrent ?? 6;
-    this._maxRetries = opts.throttleMaxRetries ?? 4;
-    this._baseBackoff = opts.throttleBaseBackoff ?? 3000;
+  /** Creates a throttler with the default pacing/retry settings. */
+  constructor() {
+    this.queue_ = [];
+    this.active_ = 0;
+    this.lastLaunch_ = 0;
+    this.backoffUntil_ = 0;
+    this.draining_ = false;
+    this.minInterval_ = THROTTLE_MIN_INTERVAL_MS;
+    this.jitter_ = THROTTLE_JITTER_MS;
+    this.maxConcurrent_ = THROTTLE_MAX_CONCURRENT;
+    this.maxRetries_ = THROTTLE_MAX_RETRIES;
+    this.baseBackoff_ = THROTTLE_BASE_BACKOFF_MS;
   }
-  updateOptions(opts) {
-    if (opts.throttleMinInterval != null)
-      this._minInterval = opts.throttleMinInterval;
-    if (opts.throttleJitter != null) this._jitter = opts.throttleJitter;
-    if (opts.throttleMaxConcurrent != null)
-      this._maxConcurrent = opts.throttleMaxConcurrent;
-    if (opts.throttleMaxRetries != null)
-      this._maxRetries = opts.throttleMaxRetries;
-    if (opts.throttleBaseBackoff != null)
-      this._baseBackoff = opts.throttleBaseBackoff;
-  }
+  /** Queues a request and resolves with its parsed response. */
   fetch(url, wantJson = true) {
     return new Promise((resolve, reject) => {
-      this._queue.push({ url, wantJson, resolve, reject, retries: 0 });
-      if (!this._draining) void this._drain();
+      this.queue_.push({ url, wantJson, resolve, reject, retries: 0 });
+      if (!this.draining_) void this.drain_();
     });
   }
+  /** @return {number} How many requests are queued or in flight. */
   get pendingCount() {
-    return this._queue.length + this._active;
+    return this.queue_.length + this.active_;
   }
-  _sleep(ms) {
+  /** Resolves after `ms` milliseconds. */
+  sleep_(ms) {
     return new Promise((r) => setTimeout(r, Math.max(0, ms)));
   }
-  async _drain() {
-    this._draining = true;
-    while (this._queue.length > 0 || this._active > 0) {
-      const backoffRemaining = this._backoffUntil - Date.now();
+  /** Continuously launches queued requests within the rate limits. */
+  async drain_() {
+    this.draining_ = true;
+    while (this.queue_.length > 0 || this.active_ > 0) {
+      const backoffRemaining = this.backoffUntil_ - Date.now();
       if (backoffRemaining > 0) {
-        await this._sleep(backoffRemaining);
+        await this.sleep_(backoffRemaining);
         continue;
       }
-      if (this._queue.length > 0 && this._active < this._maxConcurrent) {
+      if (this.queue_.length > 0 && this.active_ < this.maxConcurrent_) {
         const jitter =
-          Math.floor(Math.random() * this._jitter * 2) - this._jitter;
-        const gap = this._minInterval + jitter;
-        const since = Date.now() - this._lastLaunch;
+          Math.floor(Math.random() * this.jitter_ * 2) - this.jitter_;
+        const gap = this.minInterval_ + jitter;
+        const since = Date.now() - this.lastLaunch_;
         if (since < gap) {
-          await this._sleep(gap - since);
+          await this.sleep_(gap - since);
           continue;
         }
-        const task = this._queue.shift();
-        this._active++;
-        this._lastLaunch = Date.now();
-        void this._execute(task);
+        const task = this.queue_.shift();
+        this.active_++;
+        this.lastLaunch_ = Date.now();
+        void this.execute_(task);
         continue;
       }
-      await this._sleep(20);
+      await this.sleep_(20);
     }
-    this._draining = false;
+    this.draining_ = false;
   }
-  async _execute(task) {
+  /** Runs one queued request, requeueing it on a rate-limit error. */
+  async execute_(task) {
     try {
-      const result = await this._attempt(task.url, task.wantJson);
+      const result = await this.attempt_(task.url, task.wantJson);
       task.resolve(result);
     } catch (err) {
       const e = err;
-      if (e.rateLimited && task.retries < this._maxRetries) {
+      if (e.rateLimited && task.retries < this.maxRetries_) {
         const serverHint = e.retryAfterMs ?? 0;
-        const expBackoff = this._baseBackoff * Math.pow(2, task.retries);
+        const expBackoff = this.baseBackoff_ * Math.pow(2, task.retries);
         const jitter = Math.random() * expBackoff * 0.5;
         const delay = Math.max(serverHint, expBackoff + jitter);
-        this._backoffUntil = Date.now() + delay;
+        this.backoffUntil_ = Date.now() + delay;
         task.retries++;
-        this._queue.push(task);
+        this.queue_.push(task);
       } else {
         task.reject(e);
       }
     } finally {
-      this._active--;
-      if (!this._draining && (this._queue.length > 0 || this._active > 0)) {
-        void this._drain();
+      this.active_--;
+      if (!this.draining_ && (this.queue_.length > 0 || this.active_ > 0)) {
+        void this.drain_();
       }
     }
   }
-  async _attempt(url, wantJson) {
+  /** Performs the actual fetch and classifies error responses. */
+  async attempt_(url, wantJson) {
     const res = await fetch(url, {
       credentials: "include",
       headers: {
@@ -364,10 +285,10 @@ class RequestThrottler {
       }
       if (res.status === 503) {
         const body = await res.text().catch(() => "");
-        const isCf =
-          /cloudflare|checking your browser|just a moment|cf-browser-verification/i.test(
-            body,
-          );
+        // eslint-disable-next-line max-len -- regex literal can't be split
+        const cfPattern =
+          /cloudflare|checking your browser|just a moment|cf-browser-verification/i;
+        const isCf = cfPattern.test(body);
         if (!isCf) {
           throw new Error("HTTP 503 (server error, not CF)");
         }
@@ -408,7 +329,8 @@ class RequestThrottler {
   }
 }
 const throttler = new RequestThrottler();
-// ─── Router ──────────────────────────────────────────────────────────────────
+// Router.
+/** @return {string} Which kind of animepahe page is currently loaded. */
 function getPageType() {
   const path = window.location.pathname;
   if (/^\/?$/.test(path)) return "home";
@@ -416,6 +338,7 @@ function getPageType() {
   if (/^\/play\/[^/]+\/[^/]+\/?$/.test(path)) return "player";
   return "other";
 }
+/** @return {?Object} The anime/episode sessions parsed from the URL. */
 function getPageSessions() {
   const path = window.location.pathname;
   const playerMatch = path.match(/^\/play\/([^/]+)\/([^/]+)/);
@@ -428,8 +351,9 @@ function getPageSessions() {
   }
   return null;
 }
-// ─── Dub-signal detectors (JSON + HTML) ──────────────────────────────────────
-function _audioArraySignalsDub(track) {
+// Dub-signal detectors (JSON + HTML).
+/** @return {boolean} Whether an audio-track entry indicates a dub. */
+function audioArraySignalsDub(track) {
   if (!track || typeof track !== "object") return false;
   for (const [k, v] of Object.entries(track)) {
     const lk = k.toLowerCase();
@@ -450,9 +374,10 @@ function _audioArraySignalsDub(track) {
   }
   return false;
 }
-function _jsonSignalsDub(node) {
+/** @return {boolean} Whether a JSON response signals a dub exists. */
+function jsonSignalsDub(node) {
   if (node === null || node === undefined) return false;
-  if (Array.isArray(node)) return node.some(_jsonSignalsDub);
+  if (Array.isArray(node)) return node.some(jsonSignalsDub);
   if (typeof node === "object") {
     for (const [key, val] of Object.entries(node)) {
       const lk = key.toLowerCase();
@@ -463,17 +388,19 @@ function _jsonSignalsDub(node) {
         ) {
           return true;
         }
-        if (Array.isArray(val) && val.some(_audioArraySignalsDub)) return true;
+        if (Array.isArray(val) && val.some(audioArraySignalsDub)) return true;
       }
       if ((lk === "dub" || lk === "dubbed") && val != null) return true;
-      if (typeof val === "object" && val !== null && _jsonSignalsDub(val))
+      if (typeof val === "object" && val !== null && jsonSignalsDub(val)) {
         return true;
+      }
     }
     return false;
   }
   return false;
 }
-function _htmlSignalsDub(html, doc) {
+/** @return {boolean} Whether the rendered HTML signals a dub exists. */
+function htmlSignalsDub(html, doc) {
   for (const el of Array.from(
     doc.querySelectorAll("[data-audio],[data-lang],[data-dub]"),
   )) {
@@ -486,14 +413,13 @@ function _htmlSignalsDub(html, doc) {
   if (area) {
     const txt = area.textContent || "";
     if (/\bDub\b(?!\s*(?:bed|bing|subtitle|sub\b))/i.test(txt)) return true;
-    if (
-      /\b(?:English|Eng)\b(?!\s*(?:sub|subtitle|subtitles|subbed|dub\s+sub))/i.test(
-        txt,
-      )
-    ) {
+    const engPattern =
+      /\b(?:English|Eng)\b(?!\s*(?:sub|subtitle|subtitles|subbed|dub\s+sub))/i;
+    if (engPattern.test(txt)) {
       return true;
     }
   }
+  // eslint-disable-next-line max-len -- regex literal can't be split
   const audioFieldRe =
     /['"']?(?:audio|lang|language|dubbed)['"']?\s*:\s*['"](?:eng|en|english|dub|dubbed)['"]/i;
   const audioProximityRe =
@@ -514,17 +440,19 @@ function _htmlSignalsDub(html, doc) {
   }
   return false;
 }
-// ─── Status pill ─────────────────────────────────────────────────────────────
+// Status pill.
+/** The small fixed status pill shown in the corner of the page. */
 class StatusPill {
+  /** Creates or reuses the pill element already in the DOM. */
   constructor() {
-    this._timer = null;
+    this.timer_ = null;
     const existing = document.getElementById(PILL_ID);
     if (existing) {
-      this._el = existing;
+      this.el_ = existing;
     } else {
-      this._el = document.createElement("div");
-      this._el.id = PILL_ID;
-      Object.assign(this._el.style, {
+      this.el_ = document.createElement("div");
+      this.el_.id = PILL_ID;
+      Object.assign(this.el_.style, {
         position: "fixed",
         bottom: "14px",
         right: "14px",
@@ -543,38 +471,43 @@ class StatusPill {
         opacity: "0",
         fontVariantNumeric: "tabular-nums",
       });
-      document.body.appendChild(this._el);
+      document.body.appendChild(this.el_);
     }
   }
+  /** Shows `text` in the pill, optionally auto-hiding it later. */
   show(text, autohideMs = 0, live = false) {
     if (!live) {
-      if (this._timer) clearTimeout(this._timer);
+      if (this.timer_) clearTimeout(this.timer_);
     }
-    this._el.textContent = text;
-    this._el.style.opacity = "1";
+    this.el_.textContent = text;
+    this.el_.style.opacity = "1";
     if (autohideMs > 0) {
-      this._timer = setTimeout(() => {
-        this._el.style.opacity = "0";
+      this.timer_ = setTimeout(() => {
+        this.el_.style.opacity = "0";
       }, autohideMs);
     }
   }
+  /** Hides the pill immediately. */
   hide() {
-    if (this._timer) clearTimeout(this._timer);
-    this._el.style.opacity = "0";
+    if (this.timer_) clearTimeout(this.timer_);
+    this.el_.style.opacity = "0";
   }
 }
-// ─── Advanced Settings panel (in-page modal) ─────────────────────────────────
+// Settings panel (in-page modal).
+/** The in-page Settings modal, built and torn down on demand. */
 class SettingsPanel {
+  /** @param {!StatusPill} pill @param {function()} onChanged */
   constructor(pill, onChanged) {
-    this._pill = pill;
-    this._onChanged = onChanged;
-    this._pending = {};
+    this.pill_ = pill;
+    this.onChanged_ = onChanged;
   }
+  /** Opens the settings modal if it isn't already open. */
   open() {
     if (document.getElementById(SETTINGS_PANEL_ID)) return;
-    this._build();
+    this.build_();
   }
-  _build() {
+  /** Builds and mounts the settings modal's DOM. */
+  build_() {
     const settings = storage.getSettings();
     // overlay
     const overlay = document.createElement("div");
@@ -593,7 +526,7 @@ class SettingsPanel {
     const title = document.createElement("div");
     title.id = "ape-dub-settings-title";
     title.className = "ape-set-title";
-    title.textContent = "DUB Detector Plus - Advanced Settings";
+    title.textContent = "DUB Detector Plus - Settings";
     const sub = document.createElement("div");
     sub.className = "ape-set-sub";
     const handler = GM_info?.scriptHandler ?? "your script manager";
@@ -614,65 +547,42 @@ class SettingsPanel {
     // toggles row
     const togglesWrap = document.createElement("div");
     togglesWrap.className = "ape-set-toggles";
-    togglesWrap.appendChild(
-      this._buildToggleRow(
-        "dubEnabled",
-        "DUB Detector",
-        "Master switch for the entire detector.",
-        settings.dubEnabled,
-        (v) => storage.setSettings({ dubEnabled: v }),
-      ),
+    const dubToggle = this.buildToggleRow_(
+      "dubEnabled",
+      "DUB Detector",
+      "Master switch for the entire detector.",
+      settings.dubEnabled,
+      (v) => storage.setSettings({ dubEnabled: v }),
     );
-    togglesWrap.appendChild(
-      this._buildToggleRow(
-        "showSubOnlyBadges",
-        "Show SUB-ONLY badges",
-        "When on, episodes / cards without a dub get an orange SUB ONLY tag. Off = only DUB badges are shown.",
-        settings.showSubOnlyBadges,
-        (v) => storage.setSettings({ showSubOnlyBadges: v }),
-      ),
+    const scanHomeToggle = this.buildToggleRow_(
+      "scanHomeEnabled",
+      "Scan homepage",
+      "When on, homepage cards are automatically checked for a dub as " +
+        "you browse.",
+      settings.scanHomeEnabled,
+      (v) => storage.setSettings({ scanHomeEnabled: v }),
     );
-    panel.appendChild(togglesWrap);
-    // advanced warning
-    const warn = document.createElement("div");
-    warn.className = "ape-set-warn";
-    warn.textContent =
-      "These control internal timing, caching, and request behavior. Defaults work well for almost everyone - change with care. Edits below aren't saved until you press Apply Changes.";
-    panel.appendChild(warn);
-    // advanced groups — collapsible, in their own scrollable region so the
-    // header/toggles/footer stay put while this part scrolls
-    this._pending = {};
-    const scrollWrap = document.createElement("div");
-    scrollWrap.className = "ape-set-scroll";
-    const groups = document.createElement("div");
-    groups.className = "ape-set-groups";
-    for (const group of ADVANCED_SETTINGS_SCHEMA) {
-      groups.appendChild(this._buildGroup(group, settings));
-    }
-    scrollWrap.appendChild(groups);
-    panel.appendChild(scrollWrap);
-    // reset all
-    const resetAll = document.createElement("button");
-    resetAll.type = "button";
-    resetAll.className = "ape-set-reset-all";
-    resetAll.textContent = "Reset All Advanced Settings";
-    resetAll.addEventListener("click", () => {
-      if (
-        !confirm(
-          "Reset every advanced setting back to its default value? This won't change the feature toggles above.",
-        )
-      ) {
-        return;
-      }
-      storage.resetAdvanced();
-      this._pill.show("🎙 DUB: settings reset ✓", 2500);
-      this.close();
-      this._onChanged();
+    const subOnlyToggle = this.buildToggleRow_(
+      "showSubOnlyBadges",
+      "Show SUB-ONLY badges",
+      "When on, episodes / cards without a dub get an orange SUB ONLY " +
+        "tag. Off = only DUB badges are shown.",
+      settings.showSubOnlyBadges,
+      (v) => storage.setSettings({ showSubOnlyBadges: v }),
+    );
+    // The homepage-scan and SUB-ONLY toggles only mean something while the
+    // detector itself is running, so disable them whenever the master
+    // switch is off.
+    scanHomeToggle.setDisabled(!settings.dubEnabled);
+    subOnlyToggle.setDisabled(!settings.dubEnabled);
+    dubToggle.input.addEventListener("change", () => {
+      scanHomeToggle.setDisabled(!dubToggle.input.checked);
+      subOnlyToggle.setDisabled(!dubToggle.input.checked);
     });
-    const resetRow = document.createElement("div");
-    resetRow.className = "ape-set-reset-row";
-    resetRow.appendChild(resetAll);
-    panel.appendChild(resetRow);
+    togglesWrap.appendChild(dubToggle.row);
+    togglesWrap.appendChild(scanHomeToggle.row);
+    togglesWrap.appendChild(subOnlyToggle.row);
+    panel.appendChild(togglesWrap);
     // cache actions
     const cacheRow = document.createElement("div");
     cacheRow.className = "ape-set-cache-row";
@@ -686,34 +596,17 @@ class SettingsPanel {
     cacheBtn.textContent = `Clear DUB cache (${cached} entries)`;
     cacheBtn.addEventListener("click", () => {
       const n = clearDubCache();
-      this._pill.show(`🎙 DUB: cleared ${n} cached entries`, 2500);
+      this.pill_.show(`🎙 DUB: cleared ${n} cached entries`, 2500);
       cacheBtn.textContent = "Clear DUB cache (0 entries)";
     });
     cacheRow.appendChild(cacheBtn);
     panel.appendChild(cacheRow);
-    // apply bar — advanced-setting edits are staged and only take effect
-    // once this is pressed
-    const applyBar = document.createElement("div");
-    applyBar.className = "ape-set-apply-bar";
-    const applyStatus = document.createElement("span");
-    applyStatus.className = "ape-set-apply-status";
-    const applyBtn = document.createElement("button");
-    applyBtn.type = "button";
-    applyBtn.className = "ape-set-apply-btn";
-    applyBtn.textContent = "Apply Changes";
-    applyBtn.disabled = true;
-    applyBtn.addEventListener("click", () => this._applyPending());
-    applyBar.appendChild(applyStatus);
-    applyBar.appendChild(applyBtn);
-    panel.appendChild(applyBar);
-    this._applyBtn = applyBtn;
-    this._applyStatus = applyStatus;
-    this._updateApplyState();
     // footer
     const footer = document.createElement("div");
     footer.className = "ape-set-footer";
     footer.textContent =
-      "Feature toggles above save instantly. Reload the page after any change to apply it.";
+      "Toggles above save instantly. Reload the page after any change to " +
+      "apply it.";
     panel.appendChild(footer);
     overlay.appendChild(panel);
     overlay.addEventListener("click", (e) => {
@@ -731,89 +624,8 @@ class SettingsPanel {
     // focus the close button for keyboard users
     setTimeout(() => closeBtn.focus(), 50);
   }
-  _buildGroup(group, settings) {
-    const groupEl = document.createElement("div");
-    groupEl.className = "ape-set-group";
-
-    const headerBtn = document.createElement("div");
-    headerBtn.className = "ape-set-group-header";
-    headerBtn.setAttribute("role", "button");
-    headerBtn.setAttribute("tabindex", "0");
-    headerBtn.setAttribute("aria-expanded", "false");
-
-    const title = document.createElement("span");
-    title.className = "ape-set-group-title";
-    title.textContent = group.group;
-
-    const count = document.createElement("span");
-    count.className = "ape-set-group-count";
-    count.textContent = String(group.items.length);
-
-    const chevron = document.createElement("span");
-    chevron.className = "ape-set-group-chevron";
-    chevron.innerHTML =
-      '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M2.5 4.5 6 8l3.5-3.5"/></svg>';
-
-    headerBtn.appendChild(title);
-    headerBtn.appendChild(count);
-    headerBtn.appendChild(chevron);
-
-    const body = document.createElement("div");
-    body.className = "ape-set-group-body";
-    body.hidden = true;
-    for (const item of group.items) {
-      body.appendChild(this._buildNumberRow(item, settings[item.key]));
-    }
-
-    const toggleOpen = () => {
-      const open = groupEl.classList.toggle("open");
-      body.hidden = !open;
-      headerBtn.setAttribute("aria-expanded", String(open));
-    };
-    headerBtn.addEventListener("click", toggleOpen);
-    headerBtn.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        toggleOpen();
-      }
-    });
-
-    groupEl.appendChild(headerBtn);
-    groupEl.appendChild(body);
-    return groupEl;
-  }
-  _updateApplyState() {
-    const count = Object.keys(this._pending).length;
-    if (!this._applyBtn) return;
-    this._applyBtn.disabled = count === 0;
-    this._applyBtn.classList.remove("saved");
-    if (count === 0) {
-      this._applyBtn.textContent = "Apply Changes";
-      this._applyStatus.textContent = "";
-      this._applyStatus.classList.remove("pending");
-    } else {
-      this._applyBtn.textContent = `Apply Changes (${count})`;
-      this._applyStatus.textContent = `${count} unsaved change${count === 1 ? "" : "s"}`;
-      this._applyStatus.classList.add("pending");
-    }
-  }
-  _applyPending() {
-    if (Object.keys(this._pending).length === 0) return;
-    storage.setSettings(this._pending);
-    this._pending = {};
-    document
-      .querySelectorAll(`#${SETTINGS_PANEL_ID} .ape-set-row.dirty`)
-      .forEach((row) => row.classList.remove("dirty"));
-    this._applyBtn.textContent = "Applied ✓";
-    this._applyBtn.classList.add("saved");
-    this._applyBtn.disabled = true;
-    this._applyStatus.textContent = "Saved — reload the page to apply";
-    this._applyStatus.classList.remove("pending");
-    this._onChanged();
-    this._pill.show("🎙 DUB: settings applied ✓", 2200);
-    setTimeout(() => this._updateApplyState(), 1600);
-  }
-  _buildToggleRow(key, label, desc, checked, onSave) {
+  /** Builds one labeled on/off toggle row for the settings modal. */
+  buildToggleRow_(key, label, desc, checked, onSave) {
     const row = document.createElement("div");
     row.className = "ape-set-toggle-row";
     const labelWrap = document.createElement("label");
@@ -841,117 +653,65 @@ class SettingsPanel {
     input.addEventListener("change", () => {
       onSave(input.checked);
       row.classList.toggle("off", !input.checked);
-      this._onChanged();
+      this.onChanged_();
     });
     if (!checked) row.classList.add("off");
     row.appendChild(labelWrap);
     row.appendChild(toggle);
-    return row;
-  }
-  _buildNumberRow(item, currentValue) {
-    const row = document.createElement("div");
-    row.className = "ape-set-row";
-    row.dataset.key = item.key;
-    const top = document.createElement("div");
-    top.className = "ape-set-row-top";
-    const label = document.createElement("label");
-    label.className = "ape-set-row-label";
-    const dirtyDot = document.createElement("span");
-    dirtyDot.className = "ape-set-dirty-dot";
-    dirtyDot.title = "Unapplied change";
-    const labelText = document.createElement("span");
-    labelText.textContent = item.label;
-    label.appendChild(dirtyDot);
-    label.appendChild(labelText);
-    label.setAttribute("for", `adv-${item.key}`);
-    const resetBtn = document.createElement("button");
-    resetBtn.type = "button";
-    resetBtn.className = "ape-set-reset-btn";
-    resetBtn.title = `Reset to default (${item.default})`;
-    resetBtn.setAttribute("aria-label", `Reset ${item.label} to default`);
-    resetBtn.innerHTML =
-      '<svg viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M8 2.5a5.5 5.5 0 1 0 5.16 7.4.75.75 0 0 1 1.41.5A7 7 0 1 1 8 1c1.77 0 3.36.71 4.53 1.86V1.75a.75.75 0 0 1 1.5 0v3.5a.75.75 0 0 1-.75.75h-3.5a.75.75 0 0 1 0-1.5h1.7A5.48 5.48 0 0 0 8 2.5Z"/></svg>';
-    top.appendChild(label);
-    top.appendChild(resetBtn);
-    const desc = document.createElement("p");
-    desc.className = "ape-set-row-desc";
-    desc.textContent = item.desc;
-    const input = document.createElement("input");
-    input.type = "number";
-    input.id = `adv-${item.key}`;
-    input.className = "ape-set-row-input";
-    input.min = String(item.min);
-    input.max = String(item.max);
-    input.step = String(item.step);
-    input.value = String(currentValue ?? item.default);
-    // Edits are staged into this._pending, not saved directly — nothing
-    // takes effect until "Apply Changes" is pressed.
-    const stage = (value) => {
-      value = Math.min(item.max, Math.max(item.min, value));
-      input.value = String(value);
-      const current = storage.getSettings()[item.key];
-      if (value === current) {
-        delete this._pending[item.key];
-        row.classList.remove("dirty");
-      } else {
-        this._pending[item.key] = value;
-        row.classList.add("dirty");
-      }
-      this._updateApplyState();
+    const setDisabled = (disabled) => {
+      input.disabled = disabled;
+      row.classList.toggle("disabled", disabled);
     };
-    const commit = () => {
-      let value = Number(input.value);
-      if (!Number.isFinite(value)) value = item.default;
-      stage(value);
-    };
-    input.addEventListener("change", commit);
-    input.addEventListener("blur", commit);
-    resetBtn.addEventListener("click", () => stage(item.default));
-    row.appendChild(top);
-    row.appendChild(desc);
-    row.appendChild(input);
-    return row;
+    return { row, input, setDisabled };
   }
+  /** Removes the settings modal from the DOM. */
   close() {
     document.getElementById(SETTINGS_PANEL_ID)?.remove();
     document.getElementById(SETTINGS_OVERLAY_ID)?.remove();
   }
 }
-// ─── DUB Detector ────────────────────────────────────────────────────────────
+// DUB detector.
+/** Scans animepahe pages and tags episodes/cards with dub badges. */
 class DubDetector {
+  /** @param {!Object} settings @param {!StatusPill} pill */
   constructor(settings, pill) {
-    this._episodeListObserver = null;
-    this._homeObserver = null;
-    this._homeBusy = false;
-    this._scanStart = 0;
-    this._reqCompleted = 0;
-    this._etaInterval = null;
-    this._pillBaseText = "";
-    this._activeSearches = new Map();
-    this._searchIdCounter = 0;
-    this._maxTotalReqs = 0;
-    this._itemsScanned = 0;
-    this._totalItems = 0;
-    this._inFlight = new Map();
-    this._settings = settings;
-    this._pill = pill;
-    this._parallelProbes = settings.dubParallelProbes;
-    this._batchDelay = settings.dubBatchDelay;
-    this._homeBatchSize = settings.dubHomeBatchSize;
-    this._cacheTtlMs = settings.cacheTtlHours * 60 * 60 * 1000;
+    this.episodeListObserver_ = null;
+    this.homeObserver_ = null;
+    this.homeBusy_ = false;
+    this.scanStart_ = 0;
+    this.reqCompleted_ = 0;
+    this.etaInterval_ = null;
+    this.pillBaseText_ = "";
+    this.activeSearches_ = new Map();
+    this.searchIdCounter_ = 0;
+    this.maxTotalReqs_ = 0;
+    this.itemsScanned_ = 0;
+    this.totalItems_ = 0;
+    this.inFlight_ = new Map();
+    this.settings_ = settings;
+    this.pill_ = pill;
+    this.batchDelay_ = DUB_BATCH_DELAY_MS;
+    this.homeBatchSize_ = DUB_HOME_BATCH_SIZE;
+    this.cacheTtlMs_ = CACHE_TTL_MS;
+    // Guards against `handleRoute_()` running more than once at a time (see
+    // `handleRoute_()` below for why that matters).
+    this.routingPromise_ = null;
+    this.routeQueued_ = false;
+    // Whether the initial post-load startup delay (see `runRoute_()`) has
+    // already been applied. Only the very first scan on a freshly loaded
+    // page waits; later SPA-style route changes stay responsive.
+    this.startupDelayDone_ = false;
   }
+  /** Applies newly saved settings without needing a page reload. */
   refreshSettings(settings) {
-    this._settings = settings;
-    this._parallelProbes = settings.dubParallelProbes;
-    this._batchDelay = settings.dubBatchDelay;
-    this._homeBatchSize = settings.dubHomeBatchSize;
-    this._cacheTtlMs = settings.cacheTtlHours * 60 * 60 * 1000;
-    throttler.updateOptions(settings);
+    this.settings_ = settings;
   }
-  _delay(ms) {
+  /** Resolves after `ms` milliseconds. */
+  delay_(ms) {
     return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
   }
-  async _batchProcess(items, fn, batchSize, batchDelayMs) {
+  /** Runs `fn` over `items` in batches, pausing between batches. */
+  async batchProcess_(items, fn, batchSize, batchDelayMs) {
     const chunks = items.reduce((acc, item, index) => {
       const chunkIndex = Math.floor(index / batchSize);
       if (!acc[chunkIndex]) acc[chunkIndex] = [];
@@ -965,39 +725,72 @@ class DubDetector {
       const anyNoDub = results.some((r) => !r?.hasDub);
       const skipDelay = allCached || anyNoDub;
       if (index < chunks.length - 1 && !skipDelay) {
-        await this._delay(batchDelayMs);
+        await this.delay_(batchDelayMs);
       }
     }, Promise.resolve());
   }
+  /** Boots the detector and starts watching for SPA navigation. */
   async init() {
-    throttler.updateOptions(this._settings);
-    await this._handleRoute();
+    await this.handleRoute_();
     let currentUrl = location.href;
     new MutationObserver(() => {
       if (location.href !== currentUrl) {
         currentUrl = location.href;
-        void this._handleRoute();
+        void this.handleRoute_();
       }
     }).observe(document.body, { childList: true, subtree: true });
   }
-  async _handleRoute() {
+  /**
+   * Runs the scan appropriate for the current page type, serialized so a
+   * second navigation detected mid-scan can't run concurrently with (and
+   * corrupt the shared ETA/pill state of) one already in progress.
+   */
+  async handleRoute_() {
+    if (this.routingPromise_) {
+      this.routeQueued_ = true;
+      return this.routingPromise_;
+    }
+    this.routingPromise_ = this.runRoute_().finally(() => {
+      this.routingPromise_ = null;
+      if (this.routeQueued_) {
+        this.routeQueued_ = false;
+        void this.handleRoute_();
+      }
+    });
+    return this.routingPromise_;
+  }
+  /** Runs the scan for whichever page type is currently loaded. */
+  async runRoute_() {
     const pageType = getPageType();
+    const willScan =
+      pageType === "episode-list" ||
+      pageType === "player" ||
+      (pageType === "home" && this.settings_.scanHomeEnabled);
+    if (willScan && !this.startupDelayDone_) {
+      this.startupDelayDone_ = true;
+      await this.delay_(SCAN_STARTUP_DELAY_MS);
+    }
     switch (pageType) {
       case "episode-list":
-        await this._initEpisodeList();
+        await this.initEpisodeList_();
         break;
       case "player":
-        await this._initPlayer();
+        await this.initPlayer_();
         break;
       case "home":
-        await this._initHome();
+        if (this.settings_.scanHomeEnabled) {
+          await this.initHome_();
+        } else {
+          this.pill_.hide();
+        }
         break;
       default:
-        this._pill.hide();
+        this.pill_.hide();
         break;
     }
   }
-  _getThumbnailTarget(anchor) {
+  /** @return {!Element} The element a badge should be attached to. */
+  getThumbnailTarget_(anchor) {
     let img = anchor.querySelector("img");
     if (img) return anchor;
     let p = anchor.parentElement;
@@ -1009,84 +802,90 @@ class DubDetector {
     if (img) return img.closest("a") || img.parentElement || anchor;
     return anchor;
   }
-  _startEta(baseText, totalItems = 0) {
-    this._stopEta();
-    this._scanStart = Date.now();
-    this._reqCompleted = 0;
-    this._maxTotalReqs = 0;
-    this._itemsScanned = 0;
-    this._totalItems = totalItems;
-    this._pillBaseText = baseText;
-    this._tickEta();
+  /** Starts (or restarts) the pill's progress/ETA display. */
+  startEta_(baseText, totalItems = 0) {
+    this.stopEta_();
+    this.scanStart_ = Date.now();
+    this.reqCompleted_ = 0;
+    this.maxTotalReqs_ = 0;
+    this.itemsScanned_ = 0;
+    this.totalItems_ = totalItems;
+    this.pillBaseText_ = baseText;
+    this.tickEta_();
     if (totalItems === 0) {
-      this._etaInterval = setInterval(() => this._tickEta(), 50);
+      this.etaInterval_ = setInterval(() => this.tickEta_(), 50);
     }
   }
-  _stopEta() {
-    if (this._etaInterval) {
-      clearInterval(this._etaInterval);
-      this._etaInterval = null;
+  /** Stops the pill's progress/ETA display. */
+  stopEta_() {
+    if (this.etaInterval_) {
+      clearInterval(this.etaInterval_);
+      this.etaInterval_ = null;
     }
   }
-  _itemCompleted() {
-    this._itemsScanned++;
-    this._tickEta();
+  /** Marks one more item as scanned and refreshes the pill. */
+  itemCompleted_() {
+    this.itemsScanned_++;
+    this.tickEta_();
   }
-  _tickEta() {
-    if (this._totalItems > 0) {
-      let pct = Math.floor((this._itemsScanned / this._totalItems) * 100);
+  /** Recomputes and redraws the pill's progress percentage. */
+  tickEta_() {
+    if (this.totalItems_ > 0) {
+      let pct = Math.floor((this.itemsScanned_ / this.totalItems_) * 100);
       pct = Math.max(
         0,
-        Math.min(this._itemsScanned === this._totalItems ? 100 : 99, pct),
+        Math.min(this.itemsScanned_ === this.totalItems_ ? 100 : 99, pct),
       );
-      this._pill.show(`${this._pillBaseText}  ·  ${pct}%`, 0, true);
+      this.pill_.show(`${this.pillBaseText_}  ·  ${pct}%`, 0, true);
       return;
     }
     let searchPending = 0;
-    for (const size of this._activeSearches.values()) {
+    for (const size of this.activeSearches_.values()) {
+      // The search is now a sequential gallop-then-binary-search, so a
+      // bracket of `size` remaining episodes takes roughly 2*log2(size)
+      // more one-at-a-time requests to resolve (gallop out, then narrow).
       if (size > 1) {
-        const depth = Math.ceil(
-          Math.log(size) / Math.log(this._parallelProbes),
-        );
-        searchPending += depth * (this._parallelProbes - 1);
+        searchPending += 2 * Math.ceil(Math.log2(size));
       }
     }
     const pending = throttler.pendingCount + searchPending;
-    const currentTotal = this._reqCompleted + pending;
-    if (currentTotal > this._maxTotalReqs) this._maxTotalReqs = currentTotal;
+    const currentTotal = this.reqCompleted_ + pending;
+    if (currentTotal > this.maxTotalReqs_) this.maxTotalReqs_ = currentTotal;
     let pctStr = "";
-    if (this._maxTotalReqs > 0) {
-      let pct = Math.floor((this._reqCompleted / this._maxTotalReqs) * 100);
+    if (this.maxTotalReqs_ > 0) {
+      let pct = Math.floor((this.reqCompleted_ / this.maxTotalReqs_) * 100);
       pct = Math.max(
         0,
-        Math.min(pending === 0 && this._reqCompleted > 0 ? 100 : 99, pct),
+        Math.min(pending === 0 && this.reqCompleted_ > 0 ? 100 : 99, pct),
       );
       pctStr = `  ·  ${pct}%`;
     }
-    this._pill.show(`${this._pillBaseText}${pctStr}`, 0, true);
+    this.pill_.show(`${this.pillBaseText_}${pctStr}`, 0, true);
   }
-  async _initEpisodeList() {
+  /** Scans an anime's episode-list page for dubbed episodes. */
+  async initEpisodeList_() {
     const sessions = getPageSessions();
     if (!sessions) return;
-    this._pill.show("🎙 DUB: Scanning…");
-    await this._scanEpisodeList(sessions.animeSession);
-    if (!this._episodeListObserver) {
+    this.pill_.show("🎙 DUB: Scanning…");
+    await this.scanEpisodeList_(sessions.animeSession);
+    if (!this.episodeListObserver_) {
       let debounceTimer = null;
-      this._episodeListObserver = new MutationObserver(() => {
+      this.episodeListObserver_ = new MutationObserver(() => {
         if (debounceTimer) return;
         debounceTimer = setTimeout(() => {
           debounceTimer = null;
           const s = getPageSessions();
-          if (s) void this._scanEpisodeList(s.animeSession);
+          if (s) void this.scanEpisodeList_(s.animeSession);
         }, 100);
       });
-      this._episodeListObserver.observe(document.body, {
+      this.episodeListObserver_.observe(document.body, {
         childList: true,
         subtree: true,
       });
     }
   }
-  async _scanEpisodeList(animeSession) {
+  /** Finds episode cards on the page and badges the dubbed ones. */
+  async scanEpisodeList_(animeSession) {
     const cards = Array.from(
       document.querySelectorAll(
         ".episode-list-wrapper a, .episode-grid a, a[href*='/play/']",
@@ -1100,7 +899,7 @@ class DubDetector {
       const m = href.match(/\/play\/[^/]+\/([^/?#]+)/);
       if (!m) continue;
       const epSession = m[1];
-      const target = this._getThumbnailTarget(a);
+      const target = this.getThumbnailTarget_(a);
       if (target.dataset.apeDubDone) continue;
       target.dataset.apeDubDone = "1";
       if (!seenSessions.has(epSession)) {
@@ -1110,52 +909,55 @@ class DubDetector {
     }
     if (!episodes.length) return;
     episodes.reverse();
-    this._startEta("🎙 DUB: Scanning");
-    const dubCount = await this._binarySearchAndBadge(animeSession, episodes);
-    this._stopEta();
-    this._pill.show(
+    this.startEta_("🎙 DUB: Scanning");
+    const dubCount = await this.binarySearchAndBadge_(animeSession, episodes);
+    this.stopEta_();
+    this.pill_.show(
       dubCount > 0
         ? `🎙 DUB: ${dubCount} episode${dubCount === 1 ? "" : "s"} dubbed ✓`
         : "🎙 DUB: no dub found",
       4500,
     );
   }
-  async _binarySearchAndBadge(animeSession, episodes) {
-    const boundaryCount = await this._findBoundaryConcurrent(
+  /** Finds the dub boundary among `episodes` and badges accordingly. */
+  async binarySearchAndBadge_(animeSession, episodes) {
+    const boundaryCount = await this.findBoundaryConcurrent_(
       animeSession,
       episodes,
       (ep) => ep.epSession,
     );
     for (let i = 0; i < boundaryCount; i++) {
-      this._addEpBadge(episodes[i].el);
+      this.addEpBadge_(episodes[i].el);
     }
-    if (this._settings.showSubOnlyBadges) {
+    if (this.settings_.showSubOnlyBadges) {
       for (let i = boundaryCount; i < episodes.length; i++) {
-        this._addSubEpBadge(episodes[i].el);
+        this.addSubEpBadge_(episodes[i].el);
       }
     }
     return boundaryCount;
   }
-  async _initPlayer() {
+  /** Checks whether the current episode is dubbed and badges it. */
+  async initPlayer_() {
     const sessions = getPageSessions();
     if (!sessions || !sessions.epSession) return;
     document.querySelector(".ape-dub-inline")?.remove();
     document.querySelector(".ape-sub-inline")?.remove();
-    this._startEta("🎙 DUB: Checking");
-    const dubbed = await this._isEpisodeDubbed(
+    this.startEta_("🎙 DUB: Checking");
+    const dubbed = await this.isEpisodeDubbed_(
       sessions.animeSession,
       sessions.epSession,
     );
-    this._stopEta();
+    this.stopEta_();
     if (dubbed) {
-      this._addPlayerBadge();
-      this._pill.show("🎙 DUB: Dubbed ✓", 5000);
+      this.addPlayerBadge_();
+      this.pill_.show("🎙 DUB: Dubbed ✓", 5000);
     } else {
-      if (this._settings.showSubOnlyBadges) this._addSubPlayerBadge();
-      this._pill.show("🎙 DUB: Sub only", 4000);
+      if (this.settings_.showSubOnlyBadges) this.addSubPlayerBadge_();
+      this.pill_.show("🎙 DUB: Sub only", 4000);
     }
   }
-  _addPlayerBadge() {
+  /** Adds an inline DUB badge next to the player page's title. */
+  addPlayerBadge_() {
     const h1 = document.querySelector("h1");
     if (!h1 || h1.querySelector(".ape-dub-inline")) return;
     const badge = document.createElement("span");
@@ -1163,31 +965,36 @@ class DubDetector {
     badge.textContent = "DUB";
     badge.style.cssText =
       "background:#d92558;color:#fff;font:700 11px system-ui,sans-serif;" +
-      "padding:3px 9px;border-radius:3px;margin-left:10px;vertical-align:middle;" +
-      "display:inline-block;box-shadow:0 1px 5px rgba(0,0,0,.5);letter-spacing:.5px;";
+      "padding:3px 9px;border-radius:3px;margin-left:10px;" +
+      "vertical-align:middle;display:inline-block;" +
+      "box-shadow:0 1px 5px rgba(0,0,0,.5);letter-spacing:.5px;";
     h1.appendChild(badge);
   }
-  _addSubPlayerBadge() {
+  /** Adds an inline SUB ONLY badge next to the player page's title. */
+  addSubPlayerBadge_() {
     const h1 = document.querySelector("h1");
     if (
       !h1 ||
       h1.querySelector(".ape-sub-inline") ||
       h1.querySelector(".ape-dub-inline")
-    )
+    ) {
       return;
+    }
     const badge = document.createElement("span");
     badge.className = "ape-sub-inline";
     badge.textContent = "SUB ONLY";
     badge.style.cssText =
       "background:#e8710a;color:#fff;font:700 11px system-ui,sans-serif;" +
-      "padding:3px 9px;border-radius:3px;margin-left:10px;vertical-align:middle;" +
-      "display:inline-block;box-shadow:0 1px 5px rgba(0,0,0,.5);letter-spacing:.5px;";
+      "padding:3px 9px;border-radius:3px;margin-left:10px;" +
+      "vertical-align:middle;display:inline-block;" +
+      "box-shadow:0 1px 5px rgba(0,0,0,.5);letter-spacing:.5px;";
     h1.appendChild(badge);
   }
-  async _initHome() {
+  /** Scans homepage cards for dubs, watching for newly added ones. */
+  async initHome_() {
     const scanHomeCards = async () => {
-      if (this._homeBusy) return;
-      this._homeBusy = true;
+      if (this.homeBusy_) return;
+      this.homeBusy_ = true;
       const cards = Array.from(
         document.querySelectorAll('a[href*="/anime/"], a[href*="/play/"]'),
       ).filter(
@@ -1198,7 +1005,7 @@ class DubDetector {
           ),
       );
       if (!cards.length) {
-        this._homeBusy = false;
+        this.homeBusy_ = false;
         return;
       }
       const work = [];
@@ -1208,7 +1015,7 @@ class DubDetector {
         const m = href.match(/(?:\/anime\/|\/play\/)([^/?#]+)/);
         if (!m) continue;
         const animeSession = m[1];
-        const target = this._getThumbnailTarget(a);
+        const target = this.getThumbnailTarget_(a);
         if (target.dataset.apeDubDone) continue;
         target.dataset.apeDubDone = "1";
         if (!seenSessions.has(animeSession)) {
@@ -1217,61 +1024,63 @@ class DubDetector {
         }
       }
       if (work.length > 0) {
-        this._startEta("🎙 DUB: Scanning home", work.length);
-        await this._batchProcess(
+        this.startEta_("🎙 DUB: Scanning home", work.length);
+        await this.batchProcess_(
           work,
-          (item) => this._scanHomeCard(item),
-          this._homeBatchSize,
-          this._batchDelay,
+          (item) => this.scanHomeCard_(item),
+          this.homeBatchSize_,
+          this.batchDelay_,
         );
-        this._stopEta();
-        this._pill.show("🎙 DUB: scan complete ✓", 4000);
+        this.stopEta_();
+        this.pill_.show("🎙 DUB: scan complete ✓", 4000);
       }
-      this._homeBusy = false;
+      this.homeBusy_ = false;
     };
     await scanHomeCards();
-    if (!this._homeObserver) {
+    if (!this.homeObserver_) {
       let debounce = null;
-      this._homeObserver = new MutationObserver(() => {
-        if (!this._homeBusy) {
+      this.homeObserver_ = new MutationObserver(() => {
+        if (!this.homeBusy_) {
           if (debounce) clearTimeout(debounce);
           debounce = setTimeout(() => void scanHomeCards(), 100);
         }
       });
-      this._homeObserver.observe(document.body, {
+      this.homeObserver_.observe(document.body, {
         childList: true,
         subtree: true,
       });
     }
   }
-  async _scanHomeCard(ref) {
-    const cached = readCache(homeCacheKey(ref.animeSession), this._cacheTtlMs);
+  /** Fetches (or reads from cache) one homepage card's dub stats. */
+  async scanHomeCard_(ref) {
+    const cached = readCache(homeCacheKey(ref.animeSession), this.cacheTtlMs_);
     if (cached) {
-      this._addHomeBadge(ref.anchor, cached.dubs, cached.total);
-      this._itemCompleted();
+      this.addHomeBadge_(ref.anchor, cached.dubs, cached.total);
+      this.itemCompleted_();
       return { cached: true, hasDub: cached.dubs > 0 };
     }
-    this._setSpinner(ref.anchor, true);
+    this.setSpinner_(ref.anchor, true);
     let hasDub = false;
     try {
-      const stats = await this._fetchAnimeStats(ref.animeSession);
+      const stats = await this.fetchAnimeStats_(ref.animeSession);
       if (stats) {
         writeCache(homeCacheKey(ref.animeSession), stats);
-        this._addHomeBadge(ref.anchor, stats.dubs, stats.total);
+        this.addHomeBadge_(ref.anchor, stats.dubs, stats.total);
         hasDub = stats.dubs > 0;
       }
     } catch {
       // swallow; cache miss + error → no badge
     } finally {
-      this._setSpinner(ref.anchor, false);
+      this.setSpinner_(ref.anchor, false);
     }
-    this._itemCompleted();
+    this.itemCompleted_();
     return { cached: false, hasDub };
   }
-  async _fetchAnimeStats(animeSession) {
+  /** @return {?Object} The anime's total/dubbed episode counts. */
+  async fetchAnimeStats_(animeSession) {
     let data;
     try {
-      data = await this._apiFetch(
+      data = await this.apiFetch_(
         `/api?m=release&id=${animeSession}&sort=episode_asc&page=1`,
         true,
       );
@@ -1286,74 +1095,72 @@ class DubDetector {
       ? data.data
       : Object.values(data.data || {});
     if (!eps.length) return { dubs: 0, total };
-    const dubs = await this._findDubCountBinary(animeSession, eps);
+    const dubs = await this.findDubCountBinary_(animeSession, eps);
     return { dubs, total };
   }
-  async _findBoundaryConcurrent(animeSession, eps, sessionExtractor) {
+  /** @return {number} How many leading items in `eps` are dubbed. */
+  async findBoundaryConcurrent_(animeSession, eps, sessionExtractor) {
     if (!eps.length) return 0;
     const check = (idx) =>
-      this._isEpisodeDubbed(animeSession, sessionExtractor(eps[idx]));
+      this.isEpisodeDubbed_(animeSession, sessionExtractor(eps[idx]));
     if (eps.length === 1) return (await check(0)) ? 1 : 0;
-    const reqsBeforeInitial = this._reqCompleted;
+    const reqsBeforeInitial = this.reqCompleted_;
     const [firstDubbed, lastDubbed] = await Promise.all([
       check(0),
       check(eps.length - 1),
     ]);
-    const initialWasCached = this._reqCompleted === reqsBeforeInitial;
+    const initialWasCached = this.reqCompleted_ === reqsBeforeInitial;
     if (!firstDubbed) return 0;
     if (lastDubbed) return eps.length;
     if (!initialWasCached) {
-      await this._delay(this._batchDelay);
+      await this.delay_(this.batchDelay_);
     }
-    const searchId = ++this._searchIdCounter;
-    let left = 0;
-    let right = eps.length - 1;
+    // Dubs are almost always a contiguous run starting at the oldest
+    // episode, with only the most recent handful still sub-only, so gallop
+    // backward from the newest episode -- one request at a time, never in
+    // parallel -- to find that cutoff quickly without bursting the API.
+    const searchId = ++this.searchIdCounter_;
+    let notDubbedIdx = eps.length - 1;
+    let dubbedIdx = 0;
+    let step = 1;
+    this.activeSearches_.set(searchId, notDubbedIdx - dubbedIdx);
+    this.tickEta_();
+    let cursor = notDubbedIdx - step;
+    while (cursor > dubbedIdx) {
+      if (await check(cursor)) {
+        dubbedIdx = cursor;
+        break;
+      }
+      notDubbedIdx = cursor;
+      step *= 2;
+      cursor = notDubbedIdx - step;
+      this.activeSearches_.set(searchId, notDubbedIdx - dubbedIdx);
+      this.tickEta_();
+    }
+    // Binary search narrows the now-small remaining bracket to the exact
+    // split, still one request at a time.
+    let left = dubbedIdx;
+    let right = notDubbedIdx;
     while (right - left > 1) {
-      this._activeSearches.set(searchId, right - left);
-      this._tickEta();
-      const step = (right - left) / this._parallelProbes;
-      const probeIndices = [];
-      for (let i = 1; i < this._parallelProbes; i++) {
-        const mid = Math.floor(left + step * i);
-        if (mid > left && mid < right && !probeIndices.includes(mid))
-          probeIndices.push(mid);
-      }
-      if (probeIndices.length === 0) {
-        const mid = Math.floor((left + right) / 2);
-        if (mid > left && mid < right) probeIndices.push(mid);
-        else break;
-      }
-      const reqsBeforeProbes = this._reqCompleted;
-      const results = await Promise.all(probeIndices.map(check));
-      const probesWereCached = this._reqCompleted === reqsBeforeProbes;
-      let lastTrueIdx = -1;
-      for (let i = 0; i < results.length; i++) {
-        if (results[i]) lastTrueIdx = i;
-        else break;
-      }
-      if (lastTrueIdx === -1) {
-        right = probeIndices[0];
-      } else if (lastTrueIdx === probeIndices.length - 1) {
-        left = probeIndices[lastTrueIdx];
-      } else {
-        left = probeIndices[lastTrueIdx];
-        right = probeIndices[lastTrueIdx + 1];
-      }
-      if (right - left > 1 && !probesWereCached) {
-        await this._delay(this._batchDelay);
-      }
+      const mid = Math.floor((left + right) / 2);
+      if (await check(mid)) left = mid;
+      else right = mid;
+      this.activeSearches_.set(searchId, right - left);
+      this.tickEta_();
     }
-    this._activeSearches.delete(searchId);
-    this._tickEta();
+    this.activeSearches_.delete(searchId);
+    this.tickEta_();
     return left + 1;
   }
-  async _findDubCountBinary(animeSession, eps) {
-    return this._findBoundaryConcurrent(animeSession, eps, (ep) => {
+  /** @return {number} How many of an anime's episodes are dubbed. */
+  async findDubCountBinary_(animeSession, eps) {
+    return this.findBoundaryConcurrent_(animeSession, eps, (ep) => {
       const e = ep;
       return e.session || e.anime_session || "";
     });
   }
-  _addEpBadge(el) {
+  /** Adds a DUB badge to an episode-list card. */
+  addEpBadge_(el) {
     if (el.querySelector(".ape-dub-badge-ep")) return;
     const badge = document.createElement("span");
     badge.className = "ape-dub-badge ape-dub-badge-ep";
@@ -1363,7 +1170,8 @@ class DubDetector {
     }
     el.appendChild(badge);
   }
-  _addSubEpBadge(el) {
+  /** Adds a SUB ONLY badge to an episode-list card. */
+  addSubEpBadge_(el) {
     if (el.querySelector(".ape-dub-badge-ep")) return;
     if (el.querySelector(".ape-sub-badge-ep")) return;
     const badge = document.createElement("span");
@@ -1375,9 +1183,10 @@ class DubDetector {
     }
     el.appendChild(badge);
   }
-  _addHomeBadge(el, dubs, total) {
+  /** Adds a dub-count or SUB ONLY badge to a homepage card. */
+  addHomeBadge_(el, dubs, total) {
     if (el.querySelector(".ape-dub-badge-home")) return;
-    if (dubs <= 0 && !this._settings.showSubOnlyBadges) return;
+    if (dubs <= 0 && !this.settings_.showSubOnlyBadges) return;
     const badge = document.createElement("span");
     badge.className = "ape-dub-badge ape-dub-badge-home";
     if (dubs > 0) {
@@ -1391,7 +1200,8 @@ class DubDetector {
     }
     el.appendChild(badge);
   }
-  _setSpinner(el, on) {
+  /** Shows or hides the loading spinner on a card. */
+  setSpinner_(el, on) {
     if (on) {
       if (el.querySelector(".ape-dub-spin")) return;
       const s = document.createElement("span");
@@ -1404,31 +1214,34 @@ class DubDetector {
       el.querySelector(".ape-dub-spin")?.remove();
     }
   }
-  async _apiFetch(url, wantJson = true) {
+  /** Fetches `url` through the throttler and tracks ETA progress. */
+  async apiFetch_(url, wantJson = true) {
     const result = await throttler.fetch(url, wantJson);
-    this._reqCompleted++;
-    this._tickEta();
+    this.reqCompleted_++;
+    this.tickEta_();
     return result;
   }
-  async _isEpisodeDubbed(animeSession, epSession) {
-    const cached = readCache(epCacheKey(epSession), this._cacheTtlMs);
+  /** @return {boolean} Whether an episode is dubbed, using the cache. */
+  async isEpisodeDubbed_(animeSession, epSession) {
+    const cached = readCache(epCacheKey(epSession), this.cacheTtlMs_);
     if (cached !== null) return cached;
-    if (this._inFlight.has(epSession)) {
-      return this._inFlight.get(epSession);
+    if (this.inFlight_.has(epSession)) {
+      return this.inFlight_.get(epSession);
     }
-    const promise = this._fetchDubStatus(animeSession, epSession);
-    this._inFlight.set(epSession, promise);
+    const promise = this.fetchDubStatus_(animeSession, epSession);
+    this.inFlight_.set(epSession, promise);
     try {
       return await promise;
     } finally {
-      this._inFlight.delete(epSession);
+      this.inFlight_.delete(epSession);
     }
   }
-  async _fetchDubStatus(animeSession, epSession) {
+  /** @return {boolean} An episode's dub status, checking API then HTML. */
+  async fetchDubStatus_(animeSession, epSession) {
     let dubbed = null;
     let apiError = null;
     try {
-      dubbed = await this._checkDubViaApi(animeSession, epSession);
+      dubbed = await this.checkDubViaApi_(animeSession, epSession);
     } catch (err) {
       // eslint-disable-next-line no-unused-vars
       apiError = err;
@@ -1437,7 +1250,7 @@ class DubDetector {
     }
     if (dubbed === null) {
       try {
-        dubbed = await this._checkDubViaHtml(animeSession, epSession);
+        dubbed = await this.checkDubViaHtml_(animeSession, epSession);
       } catch {
         return false;
       }
@@ -1445,23 +1258,25 @@ class DubDetector {
     writeCache(epCacheKey(epSession), dubbed);
     return dubbed;
   }
-  async _checkDubViaApi(animeSession, epSession) {
-    const data = await this._apiFetch(
+  /** @return {boolean} Whether the links API response signals a dub. */
+  async checkDubViaApi_(animeSession, epSession) {
+    const data = await this.apiFetch_(
       `/api?m=links&id=${animeSession}&session=${epSession}&p=kwik`,
       true,
     );
-    return _jsonSignalsDub(data);
+    return jsonSignalsDub(data);
   }
-  async _checkDubViaHtml(animeSession, epSession) {
-    const html = await this._apiFetch(
+  /** @return {boolean} Whether the rendered episode page signals a dub. */
+  async checkDubViaHtml_(animeSession, epSession) {
+    const html = await this.apiFetch_(
       `/play/${animeSession}/${epSession}`,
       false,
     );
     const doc = new DOMParser().parseFromString(html, "text/html");
-    return _htmlSignalsDub(html, doc);
+    return htmlSignalsDub(html, doc);
   }
 }
-// ─── Bootstrap ───────────────────────────────────────────────────────────────
+// Bootstrap.
 (function bootstrap() {
   "use strict";
   // Inject styles (badges, spinner, settings panel)
@@ -1503,7 +1318,7 @@ class DubDetector {
   animation:      ape-dub-spin .7s linear infinite !important;
 }
 
-/* ─── Advanced Settings modal ─────────────────────────────────────────── */
+/* Settings modal. */
 #${SETTINGS_OVERLAY_ID} {
   position: fixed; inset: 0;
   background: rgba(0,0,0,0.6);
@@ -1538,10 +1353,13 @@ class DubDetector {
   gap: 10px;
   padding: 16px 18px 12px;
   border-bottom: 1px solid rgba(255,255,255,0.06);
-  background: linear-gradient(135deg, rgba(232,113,10,0.06) 0%, rgba(217,37,88,0.06) 100%);
+  background: linear-gradient(135deg, rgba(232,113,10,0.06) 0%,
+    rgba(217,37,88,0.06) 100%);
   border-radius: 12px 12px 0 0;
 }
-.ape-set-title-box { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ape-set-title-box {
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+}
 .ape-set-title {
   font-size: 15px; font-weight: 700; color: #f4f4f8; letter-spacing: 0.01em;
 }
@@ -1602,121 +1420,13 @@ class DubDetector {
   transform: translateX(16px);
 }
 
-.ape-set-warn {
-  font-size: 11px; line-height: 1.45;
-  color: #e8b24a; background: rgba(232,178,74,0.08);
-  border: 1px solid rgba(232,178,74,0.2);
-  border-radius: 6px; padding: 8px 10px;
-  margin: 12px 14px 0;
+.ape-set-toggle-row.disabled { opacity: 0.4; }
+.ape-set-toggle-row.disabled .ape-set-toggle-label,
+.ape-set-toggle-row.disabled .ape-set-toggle {
+  cursor: default;
 }
-
-.ape-set-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 8px 14px 4px;
-}
-.ape-set-scroll::-webkit-scrollbar { width: 7px; }
-.ape-set-scroll::-webkit-scrollbar-track { background: transparent; }
-.ape-set-scroll::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.12); border-radius: 4px;
-}
-.ape-set-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(255,255,255,0.22);
-}
-
-.ape-set-groups {
-  display: flex; flex-direction: column; gap: 8px;
-}
-.ape-set-group {
-  background: #13132a; border: 1px solid rgba(255,255,255,0.07);
-  border-radius: 8px; overflow: hidden;
-}
-.ape-set-group-header {
-  display: flex; align-items: center; gap: 8px;
-  padding: 10px 12px;
-  cursor: pointer; user-select: none;
-  transition: background 0.15s;
-}
-.ape-set-group-header:hover { background: rgba(255,255,255,0.04); }
-.ape-set-group-title {
-  flex: 1;
-  font-size: 10px; font-weight: 700; color: #e4e4f0;
-  letter-spacing: 0.08em; text-transform: uppercase;
-}
-.ape-set-group-count {
-  font-size: 10px; font-weight: 600; color: #7878a0;
-  background: #1a1a34; border-radius: 8px; padding: 1px 6px;
-}
-.ape-set-group-chevron {
-  display: flex; flex-shrink: 0; color: #7878a0;
-  transition: transform 0.2s ease;
-}
-.ape-set-group-chevron svg { width: 11px; height: 11px; }
-.ape-set-group.open .ape-set-group-chevron { transform: rotate(180deg); }
-.ape-set-group-body {
-  display: flex; flex-direction: column; gap: 8px;
-  padding: 0 12px 12px;
-  border-top: 1px solid rgba(255,255,255,0.06);
-  padding-top: 10px;
-  margin-top: -1px;
-}
-
-.ape-set-row {
-  background: #1a1a34; border: 1px solid rgba(255,255,255,0.07);
-  border-radius: 6px; padding: 8px 10px;
-  display: flex; flex-direction: column; gap: 5px;
-  transition: border-color 0.15s;
-}
-.ape-set-row.dirty { border-color: #e8710a; }
-.ape-set-row-top {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-}
-.ape-set-row-label {
-  font-size: 11.5px; font-weight: 600; color: #e4e4f0;
-  display: flex; align-items: center; gap: 6px;
-}
-.ape-set-dirty-dot {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: #e8710a; flex-shrink: 0; display: none;
-}
-.ape-set-row.dirty .ape-set-dirty-dot { display: block; }
-.ape-set-reset-btn {
-  flex-shrink: 0; width: 22px; height: 22px;
-  display: flex; align-items: center; justify-content: center;
-  border-radius: 5px; border: 1px solid rgba(255,255,255,0.08);
-  background: transparent; color: #7878a0;
-  cursor: pointer; transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-.ape-set-reset-btn svg { width: 12px; height: 12px; }
-.ape-set-reset-btn:hover {
-  background: rgba(255,255,255,0.1); color: #fff;
-  border-color: rgba(255,255,255,0.18);
-}
-.ape-set-row-desc { font-size: 10.5px; line-height: 1.4; color: #7878a0; margin: 0; }
-.ape-set-row-input {
-  width: 100%; box-sizing: border-box;
-  background: #0b0b1c; border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 5px; padding: 5px 8px;
-  font-size: 12px; font-family: inherit; color: #e4e4f0;
-  font-variant-numeric: tabular-nums;
-}
-.ape-set-row-input:focus { outline: none; border-color: #e8710a; }
-
-.ape-set-reset-row {
-  padding: 0 14px; margin-top: 14px;
-  box-sizing: border-box;
-}
-.ape-set-reset-all {
-  width: 100%;
-  box-sizing: border-box;
-  background: #1a1a34; border: 1px solid rgba(255,255,255,0.08);
-  color: #d0a0a0; font-size: 11.5px; font-weight: 600;
-  padding: 8px 10px; border-radius: 6px;
-  cursor: pointer; transition: background 0.18s, color 0.18s, border-color 0.18s;
-}
-.ape-set-reset-all:hover {
-  background: #c0392b; color: #fff; border-color: transparent;
+.ape-set-toggle input:disabled + .ape-set-toggle-track {
+  cursor: default;
 }
 
 .ape-set-cache-row {
@@ -1727,36 +1437,13 @@ class DubDetector {
   background: #1a1a34; border: 1px solid rgba(255,255,255,0.08);
   color: #b8b8d0; font-size: 11.5px; font-weight: 600;
   padding: 8px 10px; border-radius: 6px;
-  cursor: pointer; transition: background 0.18s, color 0.18s, border-color 0.18s;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s, border-color 0.18s;
 }
 .ape-set-cache-btn:hover {
-  background: rgba(217,37,88,0.18); color: #fff; border-color: rgba(217,37,88,0.4);
+  background: rgba(217,37,88,0.18); color: #fff;
+  border-color: rgba(217,37,88,0.4);
 }
-
-.ape-set-apply-bar {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 14px 0;
-  margin-top: 12px;
-}
-.ape-set-apply-status {
-  flex: 1;
-  font-size: 10.5px; color: #7878a0;
-}
-.ape-set-apply-status.pending { color: #e8710a; font-weight: 600; }
-.ape-set-apply-btn {
-  flex-shrink: 0;
-  font-size: 12px; font-weight: 700;
-  padding: 8px 16px; border-radius: 6px;
-  background: #e8710a; color: #fff; border: 1px solid transparent;
-  cursor: pointer;
-  transition: background 0.18s, transform 0.1s, opacity 0.18s;
-}
-.ape-set-apply-btn:hover:not(:disabled) { background: #f57f14; }
-.ape-set-apply-btn:active:not(:disabled) { transform: scale(0.97); }
-.ape-set-apply-btn:disabled {
-  background: #1a1a34; color: #7878a0; cursor: default;
-}
-.ape-set-apply-btn.saved { background: #2ecc71; }
 
 .ape-set-footer {
   padding: 10px 18px 16px;
@@ -1800,25 +1487,17 @@ class DubDetector {
     pill.show(`🎙 DUB: cleared ${n} cached entries`, 2500);
     detector.refreshSettings(storage.getSettings());
   });
-  registerMenu("♻️ Reset Advanced Settings", () => {
-    if (!confirm("Reset every advanced setting back to its default value?"))
-      return;
-    storage.resetAdvanced();
-    detector.refreshSettings(storage.getSettings());
-    pill.show("🎙 DUB: advanced settings reset ✓", 2500);
-  });
   registerMenu("📊 Show cache stats", () => {
     const ep = storage.keysWithPrefix(EP_PREFIX).length;
     const home = storage.keysWithPrefix(HOME_PREFIX).length;
-    const s = storage.getSettings();
     pill.show(
-      `🎙 DUB cache: ${ep} ep · ${home} home · TTL ${s.cacheTtlHours}h`,
+      `🎙 DUB cache: ${ep} ep · ${home} home · TTL ${CACHE_TTL_HOURS}h`,
       4500,
     );
   });
   // Background GC
   setTimeout(() => {
-    const removed = gcDubCache(settings.cacheTtlHours * 60 * 60 * 1000);
+    const removed = gcDubCache(CACHE_TTL_MS);
     if (removed > 0) {
       console.log(`[DUB] GC removed ${removed} stale entries.`);
     }
@@ -1831,10 +1510,9 @@ class DubDetector {
   }
   // Expose a tiny debugging hook on window (optional)
   window.apeDubDetector = {
-    version: "2.0.0",
+    version: "2.2.0",
     openSettings: () => panel.open(),
     clearCache: () => clearDubCache(),
     getSettings: () => storage.getSettings(),
-    resetSettings: () => storage.resetAdvanced(),
   };
 })();

@@ -1,15 +1,12 @@
 # animepahe DUB Detector Plus
 
-A small add-on for [animepahe](https://animepahe.pw) that puts a **DUB** or **SUB ONLY** label on every episode, so you never have to click in just to find out.
+Puts a DUB or SUB ONLY badge on every episode so you don't have to click in and check.
 
-**Version 2.0.0** · Free and open source, licensed under **GPL v3** (see [LICENSE](LICENSE)).
+Version 2.2.0. Free, open source, GPL v3 (see LICENSE).
 
 ## What it does
 
-- Adds a **DUB** badge to episodes that have an English dub, and a **SUB ONLY** badge to the ones that don't.
-- Works on the homepage, on an anime's episode list, and on the video player page.
-- Everything is checked automatically — you don't have to click anything.
-- Remembers what it's already checked, so it doesn't keep re-checking the same episodes every time you visit.
+Adds a DUB badge to episodes that have an English dub, and a SUB ONLY badge to the ones that don't. Works on the homepage, the episode list, and the video player, all automatically, no clicking required. Once it's checked an episode it remembers the result, so it won't ask again every time you load the page.
 
 ## Screenshots
 
@@ -19,25 +16,24 @@ A small add-on for [animepahe](https://animepahe.pw) that puts a **DUB** or **SU
 
 ## How to install
 
-1. Install a userscript manager in your browser. Both [ScriptCat](https://scriptcat.org/) and [Violentmonkey](https://violentmonkey.github.io/) are free and open source, and work in Chrome, Firefox, and Edge.
+1. Get a userscript manager. ScriptCat and Violentmonkey are both free, open source, and work in Chrome, Firefox, and Edge.
 2. Open the script's [Greasyfork page](https://greasyfork.org/en/scripts/585305-animepahe-dub-detector-plus).
-3. Click **Install this script**, then confirm the install screen shown by your userscript manager.
-4. Visit animepahe.pw or animepahe.org. That's it, the badges just show up.
+3. Click "Install this script" and confirm in your userscript manager's install screen.
+4. Load animepahe.pw or animepahe.org. The badges just show up.
 
 ## Settings
 
-Click your userscript manager's icon in your browser toolbar, then choose **"⚙️ Open DUB Detector Settings"** to open the settings panel right on the page. From there you can:
+Open your userscript manager and pick "⚙️ Open DUB Detector Settings". From there you can:
 
 - Turn the whole thing on or off
-- Turn SUB ONLY badges on or off
-- Turn homepage checking on or off (it's on by default)
-- Clear the saved results if you ever want a fresh check
-- Open **Advanced Settings** for extra options like how often things are re-checked — most people never need to touch these
+- Turn homepage checking on or off (on by default)
+- Turn SUB ONLY badges on or off (grayed out while the detector itself is off, since there's nothing to show)
+- Clear the saved results for a fresh check
 
-## A quick note on how it works
+## How it works
 
-The script only looks at animepahe's own pages to figure out which episodes are dubbed — it doesn't send your data anywhere else, and it doesn't need an account or sign-in of any kind.
+It only looks at animepahe's own pages to figure out what's dubbed. Nothing gets sent anywhere else, and there's no account or sign-in involved.
 
 ## License
 
-This project is free software, licensed under the **GNU General Public License v3.0**. You're free to use it, share it, and change it, as long as anything you share back stays under the same license. See [LICENSE](LICENSE) for the full text.
+GNU GPL v3.0. You're free to use and modify this however you like, just keep any version you share under the same license. Full text in [LICENSE](LICENSE).
