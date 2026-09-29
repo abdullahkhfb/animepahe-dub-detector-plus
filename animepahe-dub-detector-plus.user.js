@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         animepahe-dub-detector-plus
 // @namespace    https://github.com/abdullahkhfb/animepahe-dub-detector-plus
-// @version      2.2.0
+// @version      2.3.0
 // @description  Tags dubbed episodes on animepahe with DUB/SUB ONLY badges.
-// @license      GPLv3
+// @license      GPL-3.0 license
 // @author       abdullahkhfb
 // @icon         https://raw.githubusercontent.com/abdullahkhfb/animepahe-dub-detector-plus/main/icon/animepahe-dub-detector.svg
 // @match        *://animepahe.pw/*
