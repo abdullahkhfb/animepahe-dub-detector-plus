@@ -36,4 +36,4 @@ It only looks at animepahe's own pages to figure out what's dubbed. Nothing gets
 
 ## License
 
-GNU GPL-3.0. You're free to use and modify this however you like, just keep any version you share under the same license. Full text in [LICENSE](LICENSE).
+GNU GPL-3.0 You're free to use and modify this however you like, just keep any version you share under the same license. Full text in [LICENSE](LICENSE).
