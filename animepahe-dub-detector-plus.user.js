@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         animepahe-dub-detector-plus
 // @namespace    https://github.com/abdullahkhfb/animepahe-dub-detector-plus
-// @version      2.3.0
+// @version      2.4.0
 // @description  Tags dubbed episodes on animepahe with DUB/SUB ONLY badges.
 // @license      GPL-3.0 license
 // @author       abdullahkhfb
@@ -1510,7 +1510,7 @@ class DubDetector {
   }
   // Expose a tiny debugging hook on window (optional)
   window.apeDubDetector = {
-    version: "2.2.0",
+    version: "2.4.0",
     openSettings: () => panel.open(),
     clearCache: () => clearDubCache(),
     getSettings: () => storage.getSettings(),
