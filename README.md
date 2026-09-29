@@ -2,7 +2,7 @@
 
 Puts a DUB or SUB ONLY badge on every episode so you don't have to click in and check.
 
-Version 2.3.0. Free, open source, GPL v3 (see [LICENSE](LICENSE)).
+Version 2.3.0 Free, open source, GPL v3 (see [LICENSE](LICENSE)).
 
 ## What it does
 
