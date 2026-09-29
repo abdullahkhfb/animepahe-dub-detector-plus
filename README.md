@@ -2,7 +2,7 @@
 
 Puts a DUB or SUB ONLY badge on every episode so you don't have to click in and check.
 
-Version 2.2.0. Free, open source, GPL v3 (see LICENSE).
+Version 2.3.0. Free, open source, GPL v3 (see [LICENSE](LICENSE)).
 
 ## What it does
 
@@ -36,4 +36,4 @@ It only looks at animepahe's own pages to figure out what's dubbed. Nothing gets
 
 ## License
 
-GNU GPL v3.0. You're free to use and modify this however you like, just keep any version you share under the same license. Full text in [LICENSE](LICENSE).
+GNU GPL-3.0. You're free to use and modify this however you like, just keep any version you share under the same license. Full text in [LICENSE](LICENSE).
