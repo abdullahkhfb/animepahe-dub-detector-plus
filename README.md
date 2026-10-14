@@ -1,16 +1,16 @@
 # animepahe DUB Detector Plus
 
-Puts a DUB or SUB ONLY badge on every episode so you don't have to click in and check.
+Puts a quiet Dub or Sub only badge on every episode so you don't have to click in and check.
 
-Version 2.4.0 Free, open source, GPL-3.0 (see [LICENSE](LICENSE)).
+Version 2.5.0 Free, open source, GPL-3.0 (see [LICENSE](LICENSE)).
 
 ## What it does
 
-Adds a DUB badge to episodes that have an English dub, and a SUB ONLY badge to the ones that don't. Works on the homepage, the episode list, and the video player, all automatically, no clicking required. Once it's checked an episode it remembers the result, so it won't ask again every time you load the page.
+Adds a Dub badge (with a pink dot) to episodes that have an English dub, and a muted Sub only badge to the ones that don't. Works on the homepage, the episode list, and the video player, all automatically, no clicking required. Once it's checked an episode it remembers the result, so it won't ask again every time you load the page.
 
 ## Screenshots
 
-![DUB and SUB ONLY badges shown on animepahe](screenshots/screenshot-badges.png)
+![Dub and Sub only badges shown on animepahe](screenshots/screenshot-badges.png)
 
 ![The Settings panel](screenshots/screenshot-settings.png)
 
@@ -23,12 +23,14 @@ Adds a DUB badge to episodes that have an English dub, and a SUB ONLY badge to t
 
 ## Settings
 
-Open your userscript manager and pick "⚙️ Open DUB Detector Settings". From there you can:
+Click the small sliders button in the bottom-right corner of any animepahe page. (You can also open it from your userscript manager's menu with "Open Dub Detector settings".) The panel explains what each badge means, and has these options:
 
-- Turn the whole thing on or off
-- Turn homepage checking on or off (on by default)
-- Turn SUB ONLY badges on or off (grayed out while the detector itself is off, since there's nothing to show)
-- Clear the saved results for a fresh check
+- **Detect dubs**: turn the whole detector on or off
+- **Check the homepage**: badge homepage cards as you scroll (on by default)
+- **Mark episodes with no dub**: show the Sub only badge (dimmed while the detector is off, since there's nothing to show)
+- **Saved results**: clear the remembered results to re-check everything
+
+Changes save automatically. When you change something, a Reload page button appears so you can apply it.
 
 ## How it works
 

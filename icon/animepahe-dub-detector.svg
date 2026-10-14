@@ -1,29 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
-  <defs>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.15"/>
-    </filter>
-    <linearGradient id="micGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#F43F5E"/>
-      <stop offset="100%" stop-color="#BE123C"/>
-    </linearGradient>
-    <linearGradient id="badgeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#F97316"/>
-      <stop offset="100%" stop-color="#C2410C"/>
-    </linearGradient>
-  </defs>
-
-  <path d="M 60 40 L 160 100 L 60 160 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="20" stroke-linejoin="round" filter="url(#shadow)"/>
-
-  <g fill="url(#micGradient)" stroke="url(#micGradient)" stroke-width="8" stroke-linecap="round">
-    <rect x="80" y="55" width="20" height="40" rx="10" fill="url(#micGradient)" stroke="none"/>
-    <path d="M 65 80 A 25 25 0 0 0 115 80" fill="none"/>
-    <line x1="90" y1="105" x2="90" y2="125"/>
-    <line x1="75" y1="125" x2="105" y2="125"/>
-  </g>
-
-  <g filter="url(#shadow)">
-    <rect x="105" y="130" width="80" height="40" rx="20" fill="url(#badgeGradient)"/>
-    <text x="145" y="152" font-family="system-ui, -apple-system, sans-serif" font-weight="900" font-size="22" fill="#FFFFFF" text-anchor="middle" dominant-baseline="middle" letter-spacing="2">DUB</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <title>animepahe DUB Detector Plus</title>
+  <rect width="128" height="128" rx="30" fill="#141417"/>
+  <!-- speech bubble -->
+  <path fill="#ff4f7b" d="M44 28H84A18 18 0 0 1 102 46V64A18 18 0 0 1 84 82H62L40 100V82H44A18 18 0 0 1 26 64V46A18 18 0 0 1 44 28Z"/>
+  <!-- voice waveform -->
+  <g fill="#141417">
+    <rect x="39" y="50" width="9" height="10" rx="4.5"/>
+    <rect x="53" y="42" width="9" height="26" rx="4.5"/>
+    <rect x="67" y="47" width="9" height="16" rx="4.5"/>
+    <rect x="81" y="51" width="9" height="8" rx="4.5"/>
   </g>
 </svg>

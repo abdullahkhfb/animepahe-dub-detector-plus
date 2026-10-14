@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         animepahe-dub-detector-plus
 // @namespace    https://github.com/abdullahkhfb/animepahe-dub-detector-plus
-// @version      2.4.0
-// @description  Tags dubbed episodes on animepahe with DUB/SUB ONLY badges.
+// @version      2.5.0
+// @description  Tags dubbed episodes on animepahe with quiet Dub / Sub only badges.
 // @license      GPL-3.0 license
 // @author       abdullahkhfb
 // @icon         https://raw.githubusercontent.com/abdullahkhfb/animepahe-dub-detector-plus/main/icon/animepahe-dub-detector.svg
@@ -32,10 +32,21 @@
 const PILL_ID = "ape-dub-pill";
 const SETTINGS_PANEL_ID = "ape-dub-settings-panel";
 const SETTINGS_OVERLAY_ID = "ape-dub-settings-overlay";
+const SETTINGS_BTN_ID = "ape-dub-settings-btn";
 const EP_PREFIX = "d2_";
 const HOME_PREFIX = "h2_";
 const SETTINGS_KEY = "ape_settings_v4";
 const CACHE_VERSION = "v1";
+// Small inline copy of icon/animepahe-dub-detector.svg for the settings header.
+const ICON_MARK_SVG =
+  '<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">' +
+  '<rect width="128" height="128" rx="30" fill="#141417"/>' +
+  '<path fill="#ff4f7b" d="M44 28H84A18 18 0 0 1 102 46V64A18 18 0 0 1 ' +
+  '84 82H62L40 100V82H44A18 18 0 0 1 26 64V46A18 18 0 0 1 44 28Z"/>' +
+  '<g fill="#141417"><rect x="39" y="50" width="9" height="10" rx="4.5"/>' +
+  '<rect x="53" y="42" width="9" height="26" rx="4.5"/>' +
+  '<rect x="67" y="47" width="9" height="16" rx="4.5"/>' +
+  '<rect x="81" y="51" width="9" height="8" rx="4.5"/></g></svg>';
 const AUDIO_DUB_VALUES = new Set(["eng", "english", "dub", "dubbed"]);
 // eslint-disable-next-line no-unused-vars
 const SEARCH_EXCLUDE =
@@ -454,20 +465,22 @@ class StatusPill {
       this.el_.id = PILL_ID;
       Object.assign(this.el_.style, {
         position: "fixed",
-        bottom: "14px",
-        right: "14px",
+        bottom: "17px",
+        right: "56px",
         zIndex: "2147483647",
-        background: "rgba(8,8,22,0.92)",
-        color: "#e8e8f8",
-        font: "700 11px/1.5 system-ui,sans-serif",
-        padding: "6px 14px",
-        borderRadius: "20px",
+        background: "rgba(16,16,19,0.78)",
+        color: "#f2f2f4",
+        font: "500 12px/1.4 Inter,system-ui,-apple-system,sans-serif",
+        letterSpacing: "0.005em",
+        padding: "7px 14px",
+        borderRadius: "999px",
         pointerEvents: "none",
-        transition: "opacity 0.45s",
+        transition: "opacity 0.3s ease",
         maxWidth: "360px",
         textAlign: "right",
-        border: "1px solid rgba(255,255,255,0.08)",
-        backdropFilter: "blur(6px)",
+        border: "1px solid rgba(255,255,255,0.1)",
+        backdropFilter: "blur(14px) saturate(1.4)",
+        webkitBackdropFilter: "blur(14px) saturate(1.4)",
         opacity: "0",
         fontVariantNumeric: "tabular-nums",
       });
@@ -509,70 +522,87 @@ class SettingsPanel {
   /** Builds and mounts the settings modal's DOM. */
   build_() {
     const settings = storage.getSettings();
-    // overlay
-    const overlay = document.createElement("div");
+    const el = (tag, cls, text) => {
+      const n = document.createElement(tag);
+      if (cls) n.className = cls;
+      if (text !== undefined) n.textContent = text;
+      return n;
+    };
+    const overlay = el("div");
     overlay.id = SETTINGS_OVERLAY_ID;
-    // panel
-    const panel = document.createElement("div");
+    const panel = el("div");
     panel.id = SETTINGS_PANEL_ID;
     panel.setAttribute("role", "dialog");
     panel.setAttribute("aria-modal", "true");
     panel.setAttribute("aria-labelledby", "ape-dub-settings-title");
+    // Shows the "Reload" bar once anything has changed.
+    let reloadBar = null;
+    let hint = null;
+    this.reloadHook_ = () => {
+      if (reloadBar) reloadBar.hidden = false;
+      if (hint) hint.hidden = true;
+    };
     // header
-    const header = document.createElement("div");
-    header.className = "ape-set-header";
-    const titleBox = document.createElement("div");
-    titleBox.className = "ape-set-title-box";
-    const title = document.createElement("div");
+    const header = el("div", "ape-set-header");
+    const headLeft = el("div", "ape-set-head-left");
+    const mark = el("span", "ape-set-mark");
+    mark.setAttribute("aria-hidden", "true");
+    mark.innerHTML = ICON_MARK_SVG;
+    const titleBox = el("div", "ape-set-title-box");
+    const title = el("div", "ape-set-title", "Dub Detector");
     title.id = "ape-dub-settings-title";
-    title.className = "ape-set-title";
-    title.textContent = "DUB Detector Plus - Settings";
-    const sub = document.createElement("div");
-    sub.className = "ape-set-sub";
-    const handler = GM_info?.scriptHandler ?? "your script manager";
-    const ver = GM_info?.version ?? "";
-    sub.textContent = `Running on ${handler}${ver ? ` v${ver}` : ""}`;
     titleBox.appendChild(title);
-    titleBox.appendChild(sub);
-    const closeBtn = document.createElement("button");
+    titleBox.appendChild(
+      el("div", "ape-set-sub", "Shows which episodes have an English dub."),
+    );
+    headLeft.appendChild(mark);
+    headLeft.appendChild(titleBox);
+    const closeBtn = el("button", "ape-set-close");
     closeBtn.type = "button";
-    closeBtn.className = "ape-set-close";
     closeBtn.setAttribute("aria-label", "Close settings");
     closeBtn.innerHTML =
-      '<svg viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M3.75 3.75 12.25 12.25 M12.25 3.75 3.75 12.25" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+      '<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M3.75 3.75 12.25 12.25 M12.25 3.75 3.75 12.25" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
     closeBtn.addEventListener("click", () => this.close());
-    header.appendChild(titleBox);
+    header.appendChild(headLeft);
     header.appendChild(closeBtn);
     panel.appendChild(header);
-    // toggles row
-    const togglesWrap = document.createElement("div");
-    togglesWrap.className = "ape-set-toggles";
+    // legend: what each badge means
+    const legend = el("div", "ape-set-legend");
+    legend.appendChild(el("div", "ape-set-legend-title", "What the badges mean"));
+    const legendRow = (chipText, ring, meaning) => {
+      const row = el("div", "ape-set-legend-row");
+      const chip = el("span", "ape-set-chip");
+      chip.appendChild(el("span", ring ? "ape-set-dot ring" : "ape-set-dot"));
+      chip.appendChild(document.createTextNode(chipText));
+      row.appendChild(chip);
+      row.appendChild(el("span", "", meaning));
+      legend.appendChild(row);
+    };
+    legendRow("Dub", false, "An English dub is available.");
+    legendRow("Dub 11/13", false, "11 of 13 episodes have a dub.");
+    legendRow("Sub only", true, "No dub available.");
+    panel.appendChild(legend);
+    // toggles
+    const togglesWrap = el("div", "ape-set-toggles");
     const dubToggle = this.buildToggleRow_(
-      "dubEnabled",
-      "DUB Detector",
-      "Master switch for the entire detector.",
+      "Detect dubs",
+      "Turn off to pause the detector on every page.",
       settings.dubEnabled,
       (v) => storage.setSettings({ dubEnabled: v }),
     );
     const scanHomeToggle = this.buildToggleRow_(
-      "scanHomeEnabled",
-      "Scan homepage",
-      "When on, homepage cards are automatically checked for a dub as " +
-        "you browse.",
+      "Check the homepage",
+      "Badge each card on the homepage as you scroll.",
       settings.scanHomeEnabled,
       (v) => storage.setSettings({ scanHomeEnabled: v }),
     );
     const subOnlyToggle = this.buildToggleRow_(
-      "showSubOnlyBadges",
-      "Show SUB-ONLY badges",
-      "When on, episodes / cards without a dub get an orange SUB ONLY " +
-        "tag. Off = only DUB badges are shown.",
+      "Mark episodes with no dub",
+      "Adds the Sub only badge. Off shows dub badges only.",
       settings.showSubOnlyBadges,
       (v) => storage.setSettings({ showSubOnlyBadges: v }),
     );
-    // The homepage-scan and SUB-ONLY toggles only mean something while the
-    // detector itself is running, so disable them whenever the master
-    // switch is off.
+    // These two only matter while the detector itself is on.
     scanHomeToggle.setDisabled(!settings.dubEnabled);
     subOnlyToggle.setDisabled(!settings.dubEnabled);
     dubToggle.input.addEventListener("change", () => {
@@ -582,31 +612,46 @@ class SettingsPanel {
     togglesWrap.appendChild(dubToggle.row);
     togglesWrap.appendChild(scanHomeToggle.row);
     togglesWrap.appendChild(subOnlyToggle.row);
-    panel.appendChild(togglesWrap);
-    // cache actions
-    const cacheRow = document.createElement("div");
-    cacheRow.className = "ape-set-cache-row";
-    const cacheBtn = document.createElement("button");
+    // saved results
+    const countCached = () =>
+      [
+        ...storage.keysWithPrefix(EP_PREFIX),
+        ...storage.keysWithPrefix(HOME_PREFIX),
+      ].length;
+    const cacheDesc = (n) =>
+      `${n} ${n === 1 ? "result" : "results"} remembered for ` +
+      `${CACHE_TTL_HOURS} hours so pages load faster.`;
+    const cacheRow = el("div", "ape-set-toggle-row");
+    const cacheLabel = el("div", "ape-set-toggle-label");
+    cacheLabel.appendChild(el("span", "ape-set-toggle-name", "Saved results"));
+    const cacheText = el("span", "ape-set-toggle-desc", cacheDesc(countCached()));
+    cacheLabel.appendChild(cacheText);
+    const cacheBtn = el("button", "ape-set-btn", "Clear");
     cacheBtn.type = "button";
-    cacheBtn.className = "ape-set-cache-btn";
-    const cached = [
-      ...storage.keysWithPrefix(EP_PREFIX),
-      ...storage.keysWithPrefix(HOME_PREFIX),
-    ].length;
-    cacheBtn.textContent = `Clear DUB cache (${cached} entries)`;
     cacheBtn.addEventListener("click", () => {
       const n = clearDubCache();
-      this.pill_.show(`🎙 DUB: cleared ${n} cached entries`, 2500);
-      cacheBtn.textContent = "Clear DUB cache (0 entries)";
+      this.pill_.show(`Cleared ${n} saved ${n === 1 ? "result" : "results"}`, 2500);
+      cacheText.textContent = cacheDesc(0);
+      cacheBtn.textContent = "Cleared";
+      cacheBtn.disabled = true;
+      this.reloadHook_();
     });
+    cacheRow.appendChild(cacheLabel);
     cacheRow.appendChild(cacheBtn);
-    panel.appendChild(cacheRow);
-    // footer
-    const footer = document.createElement("div");
-    footer.className = "ape-set-footer";
-    footer.textContent =
-      "Toggles above save instantly. Reload the page after any change to " +
-      "apply it.";
+    togglesWrap.appendChild(cacheRow);
+    panel.appendChild(togglesWrap);
+    // footer: a quiet hint until something changes, then a Reload action
+    const footer = el("div", "ape-set-footer");
+    hint = el("div", "ape-set-hint", "Changes save automatically.");
+    reloadBar = el("div", "ape-set-reload");
+    reloadBar.hidden = true;
+    reloadBar.appendChild(el("span", "", "Reload this page to apply your changes."));
+    const reloadBtn = el("button", "ape-set-primary", "Reload page");
+    reloadBtn.type = "button";
+    reloadBtn.addEventListener("click", () => window.location.reload());
+    reloadBar.appendChild(reloadBtn);
+    footer.appendChild(hint);
+    footer.appendChild(reloadBar);
     panel.appendChild(footer);
     overlay.appendChild(panel);
     overlay.addEventListener("click", (e) => {
@@ -621,11 +666,12 @@ class SettingsPanel {
       }
     };
     document.addEventListener("keydown", onKey);
-    // focus the close button for keyboard users
-    setTimeout(() => closeBtn.focus(), 50);
+    // move focus into the dialog for keyboard users
+    panel.tabIndex = -1;
+    setTimeout(() => panel.focus(), 50);
   }
   /** Builds one labeled on/off toggle row for the settings modal. */
-  buildToggleRow_(key, label, desc, checked, onSave) {
+  buildToggleRow_(label, desc, checked, onSave) {
     const row = document.createElement("div");
     row.className = "ape-set-toggle-row";
     const labelWrap = document.createElement("label");
@@ -642,6 +688,7 @@ class SettingsPanel {
     toggle.className = "ape-set-toggle";
     const input = document.createElement("input");
     input.type = "checkbox";
+    input.setAttribute("role", "switch");
     input.checked = checked;
     const track = document.createElement("span");
     track.className = "ape-set-toggle-track";
@@ -652,10 +699,9 @@ class SettingsPanel {
     toggle.appendChild(track);
     input.addEventListener("change", () => {
       onSave(input.checked);
-      row.classList.toggle("off", !input.checked);
       this.onChanged_();
+      this.reloadHook_?.();
     });
-    if (!checked) row.classList.add("off");
     row.appendChild(labelWrap);
     row.appendChild(toggle);
     const setDisabled = (disabled) => {
@@ -836,7 +882,11 @@ class DubDetector {
         0,
         Math.min(this.itemsScanned_ === this.totalItems_ ? 100 : 99, pct),
       );
-      this.pill_.show(`${this.pillBaseText_}  ·  ${pct}%`, 0, true);
+      this.pill_.show(
+        `${this.pillBaseText_} ${this.itemsScanned_} of ${this.totalItems_}`,
+        0,
+        true,
+      );
       return;
     }
     let searchPending = 0;
@@ -858,7 +908,7 @@ class DubDetector {
         0,
         Math.min(pending === 0 && this.reqCompleted_ > 0 ? 100 : 99, pct),
       );
-      pctStr = `  ·  ${pct}%`;
+      pctStr = ` ${pct}%`;
     }
     this.pill_.show(`${this.pillBaseText_}${pctStr}`, 0, true);
   }
@@ -866,7 +916,7 @@ class DubDetector {
   async initEpisodeList_() {
     const sessions = getPageSessions();
     if (!sessions) return;
-    this.pill_.show("🎙 DUB: Scanning…");
+    this.pill_.show("Dub: Scanning…");
     await this.scanEpisodeList_(sessions.animeSession);
     if (!this.episodeListObserver_) {
       let debounceTimer = null;
@@ -909,13 +959,13 @@ class DubDetector {
     }
     if (!episodes.length) return;
     episodes.reverse();
-    this.startEta_("🎙 DUB: Scanning");
+    this.startEta_("Dub: Scanning");
     const dubCount = await this.binarySearchAndBadge_(animeSession, episodes);
     this.stopEta_();
     this.pill_.show(
       dubCount > 0
-        ? `🎙 DUB: ${dubCount} episode${dubCount === 1 ? "" : "s"} dubbed ✓`
-        : "🎙 DUB: no dub found",
+        ? `Dub: ${dubCount} episode${dubCount === 1 ? "" : "s"} dubbed`
+        : "Dub: no dub found",
       4500,
     );
   }
@@ -942,7 +992,7 @@ class DubDetector {
     if (!sessions || !sessions.epSession) return;
     document.querySelector(".ape-dub-inline")?.remove();
     document.querySelector(".ape-sub-inline")?.remove();
-    this.startEta_("🎙 DUB: Checking");
+    this.startEta_("Dub: Checking");
     const dubbed = await this.isEpisodeDubbed_(
       sessions.animeSession,
       sessions.epSession,
@@ -950,10 +1000,10 @@ class DubDetector {
     this.stopEta_();
     if (dubbed) {
       this.addPlayerBadge_();
-      this.pill_.show("🎙 DUB: Dubbed ✓", 5000);
+      this.pill_.show("Dub: Dubbed", 5000);
     } else {
       if (this.settings_.showSubOnlyBadges) this.addSubPlayerBadge_();
-      this.pill_.show("🎙 DUB: Sub only", 4000);
+      this.pill_.show("Dub: Sub only", 4000);
     }
   }
   /** Adds an inline DUB badge next to the player page's title. */
@@ -962,12 +1012,7 @@ class DubDetector {
     if (!h1 || h1.querySelector(".ape-dub-inline")) return;
     const badge = document.createElement("span");
     badge.className = "ape-dub-inline";
-    badge.textContent = "DUB";
-    badge.style.cssText =
-      "background:#d92558;color:#fff;font:700 11px system-ui,sans-serif;" +
-      "padding:3px 9px;border-radius:3px;margin-left:10px;" +
-      "vertical-align:middle;display:inline-block;" +
-      "box-shadow:0 1px 5px rgba(0,0,0,.5);letter-spacing:.5px;";
+    badge.textContent = "Dub";
     h1.appendChild(badge);
   }
   /** Adds an inline SUB ONLY badge next to the player page's title. */
@@ -982,12 +1027,7 @@ class DubDetector {
     }
     const badge = document.createElement("span");
     badge.className = "ape-sub-inline";
-    badge.textContent = "SUB ONLY";
-    badge.style.cssText =
-      "background:#e8710a;color:#fff;font:700 11px system-ui,sans-serif;" +
-      "padding:3px 9px;border-radius:3px;margin-left:10px;" +
-      "vertical-align:middle;display:inline-block;" +
-      "box-shadow:0 1px 5px rgba(0,0,0,.5);letter-spacing:.5px;";
+    badge.textContent = "Sub only";
     h1.appendChild(badge);
   }
   /** Scans homepage cards for dubs, watching for newly added ones. */
@@ -1024,7 +1064,7 @@ class DubDetector {
         }
       }
       if (work.length > 0) {
-        this.startEta_("🎙 DUB: Scanning home", work.length);
+        this.startEta_("Dub: Scanning", work.length);
         await this.batchProcess_(
           work,
           (item) => this.scanHomeCard_(item),
@@ -1032,7 +1072,7 @@ class DubDetector {
           this.batchDelay_,
         );
         this.stopEta_();
-        this.pill_.show("🎙 DUB: scan complete ✓", 4000);
+        this.pill_.show("Dub: scan complete", 4000);
       }
       this.homeBusy_ = false;
     };
@@ -1164,7 +1204,7 @@ class DubDetector {
     if (el.querySelector(".ape-dub-badge-ep")) return;
     const badge = document.createElement("span");
     badge.className = "ape-dub-badge ape-dub-badge-ep";
-    badge.textContent = "DUB";
+    badge.textContent = "Dub";
     if (getComputedStyle(el).position === "static") {
       el.style.setProperty("position", "relative", "important");
     }
@@ -1175,9 +1215,8 @@ class DubDetector {
     if (el.querySelector(".ape-dub-badge-ep")) return;
     if (el.querySelector(".ape-sub-badge-ep")) return;
     const badge = document.createElement("span");
-    badge.className = "ape-dub-badge ape-sub-badge-ep";
-    badge.textContent = "SUB ONLY";
-    badge.style.setProperty("background", "#e8710a", "important");
+    badge.className = "ape-dub-badge ape-sub-badge-ep ape-is-sub";
+    badge.textContent = "Sub only";
     if (getComputedStyle(el).position === "static") {
       el.style.setProperty("position", "relative", "important");
     }
@@ -1190,10 +1229,10 @@ class DubDetector {
     const badge = document.createElement("span");
     badge.className = "ape-dub-badge ape-dub-badge-home";
     if (dubs > 0) {
-      badge.textContent = `🎙 ${dubs}/${total}`;
+      badge.textContent = `Dub ${dubs}/${total}`;
     } else {
-      badge.textContent = "SUB ONLY";
-      badge.style.setProperty("background", "#e8710a", "important");
+      badge.classList.add("ape-is-sub");
+      badge.textContent = "Sub only";
     }
     if (getComputedStyle(el).position === "static") {
       el.style.setProperty("position", "relative", "important");
@@ -1283,174 +1322,269 @@ class DubDetector {
   const css = `
 @keyframes ape-dub-spin { to { transform: rotate(360deg); } }
 
+/* Badges: quiet glass chips. Dub carries the accent dot; sub-only recedes. */
 .ape-dub-badge,
 .ape-dub-badge-home {
-  position:       absolute !important;
-  top:            5px      !important;
-  right:          5px      !important;
-  left:           auto     !important;
-  z-index:        9999     !important;
-  color:          #fff     !important;
-  font:           700 10px/1 system-ui, sans-serif !important;
-  padding:        3px 7px  !important;
-  border-radius:  3px      !important;
-  letter-spacing: .5px     !important;
-  pointer-events: none     !important;
-  box-shadow:     0 1px 5px rgba(0,0,0,.65) !important;
-  display:        inline-block !important;
-  text-indent:    0        !important;
-  white-space:    nowrap   !important;
+  position:        absolute !important;
+  top:             8px      !important;
+  right:           8px      !important;
+  left:            auto     !important;
+  z-index:         9999     !important;
+  display:         inline-flex !important;
+  align-items:     center   !important;
+  gap:             6px      !important;
+  height:          22px     !important;
+  padding:         0 10px 0 8px !important;
+  box-sizing:      border-box !important;
+  border-radius:   999px    !important;
+  background:      rgba(14,14,17,.7) !important;
+  -webkit-backdrop-filter: blur(10px) saturate(1.5) !important;
+  backdrop-filter: blur(10px) saturate(1.5) !important;
+  border:          1px solid rgba(255,255,255,.14) !important;
+  box-shadow:      none     !important;
+  color:           #fff     !important;
+  font:            600 11px/1 Inter, system-ui, -apple-system, sans-serif !important;
+  letter-spacing:  .01em    !important;
+  text-transform:  none     !important;
+  text-indent:     0        !important;
+  white-space:     nowrap   !important;
+  pointer-events:  none     !important;
+  font-variant-numeric: tabular-nums !important;
 }
-.ape-dub-badge      { background: #d92558 !important; }
-.ape-dub-badge-home { background: #d92558 !important; }
+.ape-dub-badge::before,
+.ape-dub-badge-home::before,
+.ape-dub-inline::before,
+.ape-sub-inline::before {
+  content:       "";
+  width:         6px;
+  height:        6px;
+  border-radius: 50%;
+  background:    #ff4f7b;
+  flex-shrink:   0;
+}
+.ape-dub-badge.ape-is-sub,
+.ape-sub-inline {
+  color: rgba(255,255,255,.7) !important;
+}
+.ape-dub-badge.ape-is-sub::before,
+.ape-sub-inline::before {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.6);
+}
+
+/* Player title badges. */
+.ape-dub-inline,
+.ape-sub-inline {
+  display:         inline-flex;
+  align-items:     center;
+  gap:             6px;
+  height:          24px;
+  padding:         0 11px 0 9px;
+  margin-left:     12px;
+  vertical-align:  middle;
+  box-sizing:      border-box;
+  border-radius:   999px;
+  background:      rgba(255,255,255,.07);
+  border:          1px solid rgba(255,255,255,.14);
+  color:           #fff;
+  font:            600 12px/1 Inter, system-ui, -apple-system, sans-serif;
+  letter-spacing:  .01em;
+  text-transform:  none;
+}
 
 .ape-dub-spin {
   position:       absolute !important;
-  top:            7px !important;
-  right:          7px !important;
+  top:            11px !important;
+  right:          11px !important;
   z-index:        9999 !important;
-  width:          10px !important;
-  height:         10px !important;
+  width:          12px !important;
+  height:         12px !important;
+  box-sizing:     border-box !important;
   border-radius:  50%  !important;
   pointer-events: none !important;
-  border:         2px solid rgba(255,255,255,.25) !important;
+  border:         1.5px solid rgba(255,255,255,.28) !important;
   border-top-color: #fff !important;
-  animation:      ape-dub-spin .7s linear infinite !important;
+  box-shadow:     0 0 0 4px rgba(14,14,17,.5) !important;
+  animation:      ape-dub-spin .8s linear infinite !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ape-dub-spin { animation-duration: 2.4s !important; }
 }
 
 /* Settings modal. */
 #${SETTINGS_OVERLAY_ID} {
   position: fixed; inset: 0;
-  background: rgba(0,0,0,0.6);
-  backdrop-filter: blur(3px);
+  background: rgba(0,0,0,0.55);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
   z-index: 2147483646;
   display: flex; align-items: center; justify-content: center;
   padding: 16px;
-  animation: ape-set-fade 0.18s ease;
+  animation: ape-set-fade 0.16s ease;
 }
 @keyframes ape-set-fade { from { opacity: 0 } to { opacity: 1 } }
 
 #${SETTINGS_PANEL_ID} {
-  width: 100%; max-width: 460px;
+  width: 100%; max-width: 400px;
   max-height: 88vh;
   display: flex; flex-direction: column;
-  background: #0b0b1c;
-  color: #e4e4f0;
+  background: #131316;
+  color: #f2f2f4;
   border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 12px;
-  font: 13px/1.5 system-ui, -apple-system, sans-serif;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.65);
-  animation: ape-set-slide 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+  border-radius: 16px;
+  font: 13px/1.45 Inter, system-ui, -apple-system, sans-serif;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+  animation: ape-set-slide 0.2s ease;
   overflow: hidden;
+  outline: none;
 }
 @keyframes ape-set-slide {
-  from { transform: translateY(8px) scale(0.98); opacity: 0 }
-  to   { transform: translateY(0)   scale(1);    opacity: 1 }
+  from { transform: translateY(6px); opacity: 0 }
+  to   { transform: translateY(0);   opacity: 1 }
 }
 
 .ape-set-header {
-  display: flex; align-items: flex-start; justify-content: space-between;
-  gap: 10px;
-  padding: 16px 18px 12px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-  background: linear-gradient(135deg, rgba(232,113,10,0.06) 0%,
-    rgba(217,37,88,0.06) 100%);
-  border-radius: 12px 12px 0 0;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px;
+  padding: 20px 20px 16px;
 }
+.ape-set-head-left {
+  display: flex; align-items: center; gap: 12px; min-width: 0;
+}
+.ape-set-mark { flex-shrink: 0; width: 34px; height: 34px; display: block; }
+.ape-set-mark svg { width: 100%; height: 100%; display: block; }
 .ape-set-title-box {
-  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+  display: flex; flex-direction: column; gap: 1px; min-width: 0;
 }
 .ape-set-title {
-  font-size: 15px; font-weight: 700; color: #f4f4f8; letter-spacing: 0.01em;
+  font-size: 15px; font-weight: 650; color: #f2f2f4; letter-spacing: -0.005em;
 }
-.ape-set-sub {
-  font-size: 11px; color: #7878a0;
-}
+.ape-set-sub { font-size: 11.5px; color: #8b8b95; }
 .ape-set-close {
   flex-shrink: 0;
   width: 28px; height: 28px;
   display: flex; align-items: center; justify-content: center;
-  border-radius: 6px;
-  border: 1px solid rgba(255,255,255,0.08);
-  background: transparent; color: #b8b8d0;
+  border-radius: 8px; border: 0;
+  background: transparent; color: #8b8b95;
   cursor: pointer; transition: background 0.15s, color 0.15s;
 }
 .ape-set-close svg { width: 14px; height: 14px; }
-.ape-set-close:hover { background: rgba(255,255,255,0.1); color: #fff; }
-
-.ape-set-toggles {
-  display: flex; flex-direction: column; gap: 8px;
-  padding: 12px 14px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+.ape-set-close:hover { background: rgba(255,255,255,0.07); color: #fff; }
+.ape-set-close:focus-visible {
+  outline: 2px solid #ff4f7b; outline-offset: 2px;
 }
+
+.ape-set-toggles { display: flex; flex-direction: column; padding: 0 20px; }
 .ape-set-toggle-row {
   display: flex; align-items: center; justify-content: space-between;
-  gap: 12px;
-  background: #13132a; border: 1px solid rgba(255,255,255,0.07);
-  border-radius: 8px; padding: 10px 12px;
+  gap: 16px;
+  padding: 14px 0;
+  border-top: 1px solid rgba(255,255,255,0.07);
 }
-.ape-set-toggle-row.off { opacity: 0.55; }
 .ape-set-toggle-label {
-  display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1;
+  display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1;
   cursor: pointer;
 }
-.ape-set-toggle-name { font-size: 13px; font-weight: 600; color: #f0f0f8; }
-.ape-set-toggle-desc { font-size: 11px; color: #7878a0; line-height: 1.4; }
+.ape-set-toggle-name { font-size: 13px; font-weight: 600; color: #f2f2f4; }
+.ape-set-toggle-desc { font-size: 12px; color: #8b8b95; line-height: 1.4; }
 
 .ape-set-toggle { position: relative; flex-shrink: 0; cursor: pointer; }
 .ape-set-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
 .ape-set-toggle-track {
-  display: block; width: 38px; height: 22px;
-  background: rgba(255,255,255,0.1);
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 11px; position: relative;
-  transition: background 0.25s, border-color 0.25s;
+  display: block; width: 34px; height: 20px;
+  background: rgba(255,255,255,0.14);
+  border-radius: 10px; position: relative;
+  transition: background 0.2s ease;
 }
-.ape-set-toggle input:checked + .ape-set-toggle-track {
-  background: #2ecc71; border-color: #2ecc71;
+.ape-set-toggle input:checked + .ape-set-toggle-track { background: #ff4f7b; }
+.ape-set-toggle input:focus-visible + .ape-set-toggle-track {
+  outline: 2px solid #ff4f7b; outline-offset: 2px;
 }
 .ape-set-toggle-thumb {
-  position: absolute; top: 2px; left: 2px;
-  width: 16px; height: 16px; background: #fff;
+  position: absolute; top: 3px; left: 3px;
+  width: 14px; height: 14px; background: #fff;
   border-radius: 50%;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
-  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: transform 0.2s ease;
 }
 .ape-set-toggle input:checked + .ape-set-toggle-track .ape-set-toggle-thumb {
-  transform: translateX(16px);
+  transform: translateX(14px);
 }
 
 .ape-set-toggle-row.disabled { opacity: 0.4; }
 .ape-set-toggle-row.disabled .ape-set-toggle-label,
-.ape-set-toggle-row.disabled .ape-set-toggle {
-  cursor: default;
+.ape-set-toggle-row.disabled .ape-set-toggle { cursor: default; }
+.ape-set-toggle input:disabled + .ape-set-toggle-track { cursor: default; }
+
+.ape-set-legend { padding: 0 20px 12px; }
+.ape-set-legend-title {
+  font-size: 12px; font-weight: 600; color: #8b8b95; margin-bottom: 6px;
 }
-.ape-set-toggle input:disabled + .ape-set-toggle-track {
-  cursor: default;
+.ape-set-legend-row {
+  display: grid; grid-template-columns: 96px 1fr; align-items: center;
+  gap: 12px; padding: 5px 0; font-size: 12px; color: #c9c9d1;
+}
+.ape-set-chip {
+  justify-self: start; display: inline-flex; align-items: center; gap: 6px;
+  height: 22px; padding: 0 10px 0 8px; box-sizing: border-box;
+  border-radius: 999px; background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.14); color: #fff;
+  font: 600 11px/1 Inter, system-ui, -apple-system, sans-serif;
+  white-space: nowrap;
+}
+.ape-set-dot { width: 6px; height: 6px; border-radius: 50%; background: #ff4f7b; }
+.ape-set-dot.ring {
+  background: transparent; box-shadow: inset 0 0 0 1.5px rgba(255,255,255,0.6);
 }
 
-.ape-set-cache-row {
-  padding: 0 14px; margin-top: 10px;
+.ape-set-btn, .ape-set-primary {
+  flex-shrink: 0; cursor: pointer;
+  font-family: inherit; font-size: 12px; font-weight: 600; line-height: 1;
+  padding: 8px 14px; border-radius: 8px;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
 }
-.ape-set-cache-btn {
-  width: 100%;
-  background: #1a1a34; border: 1px solid rgba(255,255,255,0.08);
-  color: #b8b8d0; font-size: 11.5px; font-weight: 600;
-  padding: 8px 10px; border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.18s, color 0.18s, border-color 0.18s;
+.ape-set-btn {
+  background: transparent; color: #f2f2f4;
+  border: 1px solid rgba(255,255,255,0.14);
 }
-.ape-set-cache-btn:hover {
-  background: rgba(217,37,88,0.18); color: #fff;
-  border-color: rgba(217,37,88,0.4);
+.ape-set-btn:hover:not(:disabled) {
+  background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,0.24);
+}
+.ape-set-btn:disabled { opacity: 0.5; cursor: default; }
+.ape-set-primary {
+  background: #ff4f7b; color: #141417; border: 0; font-weight: 700;
+}
+.ape-set-primary:hover { background: #ff6b90; }
+.ape-set-btn:focus-visible, .ape-set-primary:focus-visible {
+  outline: 2px solid #ff4f7b; outline-offset: 2px;
 }
 
-.ape-set-footer {
-  padding: 10px 18px 16px;
-  font-size: 11px; color: #7878a0; text-align: center;
-  border-top: 1px solid rgba(255,255,255,0.06);
-  margin-top: 10px;
+.ape-set-footer { padding: 6px 14px 14px; }
+.ape-set-hint {
+  padding: 4px 6px 4px; font-size: 12px; color: #8b8b95; text-align: center;
 }
+.ape-set-reload {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 12px 14px; border-radius: 12px;
+  background: rgba(255,79,123,0.1); border: 1px solid rgba(255,79,123,0.35);
+  font-size: 12.5px;
+}
+.ape-set-reload[hidden], .ape-set-hint[hidden] { display: none; }
+
+/* Settings button, bottom-right corner of every page. */
+#${SETTINGS_BTN_ID} {
+  position: fixed; bottom: 14px; right: 14px; z-index: 2147483646;
+  width: 32px; height: 32px; padding: 0; box-sizing: border-box;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; cursor: pointer; color: #f2f2f4;
+  background: rgba(16,16,19,0.78);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(14px) saturate(1.4);
+  border: 1px solid rgba(255,255,255,0.14);
+  opacity: 0.7; transition: opacity 0.15s, border-color 0.15s;
+}
+#${SETTINGS_BTN_ID}:hover { opacity: 1; border-color: rgba(255,255,255,0.3); }
+#${SETTINGS_BTN_ID}:focus-visible { opacity: 1; outline: 2px solid #ff4f7b; outline-offset: 2px; }
+#${SETTINGS_BTN_ID} svg { width: 16px; height: 16px; display: block; }
 `;
   try {
     if (typeof GM_addStyle === "function") {
@@ -1471,6 +1605,20 @@ class DubDetector {
   const panel = new SettingsPanel(pill, () => {
     detector.refreshSettings(storage.getSettings());
   });
+  // Settings button (the menu command below is the backup way in)
+  const addSettingsButton = () => {
+    if (document.getElementById(SETTINGS_BTN_ID)) return;
+    const btn = document.createElement("button");
+    btn.id = SETTINGS_BTN_ID;
+    btn.type = "button";
+    btn.title = "Dub Detector settings";
+    btn.setAttribute("aria-label", "Open Dub Detector settings");
+    btn.innerHTML =
+      '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M2 5h12M2 11h12"/><circle cx="6" cy="5" r="1.8" fill="#141417"/><circle cx="10.5" cy="11" r="1.8" fill="#141417"/></svg>';
+    btn.addEventListener("click", () => panel.open());
+    document.body.appendChild(btn);
+  };
+  addSettingsButton();
   // Menu commands
   const registerMenu = (label, fn) => {
     try {
@@ -1481,17 +1629,17 @@ class DubDetector {
       console.warn("[DUB] menu command failed", label, err);
     }
   };
-  registerMenu("⚙️ Open DUB Detector Settings", () => panel.open());
-  registerMenu("🗑️ Clear DUB Cache", () => {
+  registerMenu("Open Dub Detector settings", () => panel.open());
+  registerMenu("Clear Dub cache", () => {
     const n = clearDubCache();
-    pill.show(`🎙 DUB: cleared ${n} cached entries`, 2500);
+    pill.show(`Cleared ${n} cached entries`, 2500);
     detector.refreshSettings(storage.getSettings());
   });
-  registerMenu("📊 Show cache stats", () => {
+  registerMenu("Show cache stats", () => {
     const ep = storage.keysWithPrefix(EP_PREFIX).length;
     const home = storage.keysWithPrefix(HOME_PREFIX).length;
     pill.show(
-      `🎙 DUB cache: ${ep} ep · ${home} home · TTL ${CACHE_TTL_HOURS}h`,
+      `Dub cache: ${ep} ep · ${home} home · TTL ${CACHE_TTL_HOURS}h`,
       4500,
     );
   });
@@ -1506,11 +1654,11 @@ class DubDetector {
   if (settings.dubEnabled) {
     void detector.init();
   } else {
-    pill.show("🎙 DUB: detector disabled (open settings to enable)", 4500);
+    pill.show("Dub: detector disabled (open settings to enable)", 4500);
   }
   // Expose a tiny debugging hook on window (optional)
   window.apeDubDetector = {
-    version: "2.4.0",
+    version: "2.5.0",
     openSettings: () => panel.open(),
     clearCache: () => clearDubCache(),
     getSettings: () => storage.getSettings(),
